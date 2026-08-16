@@ -18,6 +18,23 @@ from typing import Any, Callable, Optional
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# PyTorch 2.6+ compatibility for model checkpoints
+# ---------------------------------------------------------------------------
+try:
+    import functools
+    import torch
+    _orig_torch_load = torch.load
+
+    @functools.wraps(_orig_torch_load)
+    def _patched_torch_load(*args, **kwargs):
+        kwargs["weights_only"] = False
+        return _orig_torch_load(*args, **kwargs)
+
+    torch.load = _patched_torch_load
+except Exception:
+    pass
+
+# ---------------------------------------------------------------------------
 # Model cache — keeps the WhisperX ASR model in memory between jobs so
 # consecutive transcriptions don't pay the model-load cost each time.
 # ---------------------------------------------------------------------------
@@ -133,6 +150,7 @@ async def run_transcription(
             model_name,
             device,
             compute_type=compute_type,
+            vad_method="silero",
         )
         logger.info("Model loaded.")
     else:
