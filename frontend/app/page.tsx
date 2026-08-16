@@ -9,7 +9,7 @@ import { TranscriptEditor } from '@/components/TranscriptEditor';
 import { ExportPanel } from '@/components/ExportPanel';
 import { useTranscription } from '@/hooks/useTranscription';
 import { Segment, TranscribeSettings } from '@/lib/types';
-import { Mic2, RefreshCw, Github } from 'lucide-react';
+import { Mic2, RefreshCw, ExternalLink } from 'lucide-react';
 
 const DEFAULT_SETTINGS: TranscribeSettings = {
   model: 'base',
@@ -83,9 +83,9 @@ export default function HomePage() {
               target="_blank"
               rel="noopener noreferrer"
               className="header-link"
-              aria-label="GitHub"
+              aria-label="GitHub repository"
             >
-              <Github size={18} />
+              <ExternalLink size={18} />
             </a>
           </div>
         </div>
