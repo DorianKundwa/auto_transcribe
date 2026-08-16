@@ -86,39 +86,15 @@ if (-not (Test-Path (Join-Path $FrontendDir "node_modules"))) {
 
 Write-Step "Starting backend  →  http://localhost:8000"
 
-$backendCmd = @"
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-`$host.UI.RawUI.WindowTitle = 'AutoTranscribe — Backend'
-Write-Host '  AutoTranscribe Backend' -ForegroundColor Cyan
-Write-Host '  http://localhost:8000' -ForegroundColor DarkGray
-Write-Host ''
-Set-Location '$Root'
-& '$VenvPython' -m uvicorn backend.main:app --reload --port 8000
-Write-Host ''
-Write-Host '  Backend stopped. Press any key to close.' -ForegroundColor Yellow
-`$null = `$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
-"@
-
-Start-Process powershell -ArgumentList "-NoExit", "-Command", $backendCmd
+$backendCmd = "title AutoTranscribe Backend && cd /d `"$Root`" && `"$VenvPython`" -m uvicorn backend.main:app --reload --port 8000"
+Start-Process cmd.exe -ArgumentList "/k", "`"$backendCmd`""
 
 # ── 5. Launch frontend in a new window ──────────────────────────────────────
 
 Write-Step "Starting frontend  →  http://localhost:3000"
 
-$frontendCmd = @"
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-`$host.UI.RawUI.WindowTitle = 'AutoTranscribe — Frontend'
-Write-Host '  AutoTranscribe Frontend' -ForegroundColor Cyan
-Write-Host '  http://localhost:3000' -ForegroundColor DarkGray
-Write-Host ''
-Set-Location '$FrontendDir'
-npm run dev
-Write-Host ''
-Write-Host '  Frontend stopped. Press any key to close.' -ForegroundColor Yellow
-`$null = `$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
-"@
-
-Start-Process powershell -ArgumentList "-NoExit", "-Command", $frontendCmd
+$frontendCmd = "title AutoTranscribe Frontend && cd /d `"$FrontendDir`" && npm run dev"
+Start-Process cmd.exe -ArgumentList "/k", "`"$frontendCmd`""
 
 # ── 6. Done ──────────────────────────────────────────────────────────────────
 

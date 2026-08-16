@@ -19,42 +19,50 @@ class AutoTranscribeLauncher
         Console.ResetColor();
         Console.WriteLine();
 
-        // ── Locate start.ps1 ────────────────────────────────────────────────
+        // ── Locate batch or ps1 launcher ───────────────────────────────────
         string exeDir    = AppDomain.CurrentDomain.BaseDirectory;
-        string scriptPath = Path.Combine(exeDir, "start.ps1");
-
-        if (!File.Exists(scriptPath))
-        {
-            WriteError("start.ps1 not found next to this executable.");
-            WriteError("Make sure AutoTranscribe.exe is in the repo root folder.");
-            Console.WriteLine();
-            Pause();
-            return;
-        }
-
-        // ── Check PowerShell ─────────────────────────────────────────────────
-        string psExe = FindPowerShell();
-        if (psExe == null)
-        {
-            WriteError("PowerShell not found. Please install PowerShell 5.1+.");
-            Console.WriteLine();
-            Pause();
-            return;
-        }
+        string batPath   = Path.Combine(exeDir, "start.bat");
+        string ps1Path   = Path.Combine(exeDir, "start.ps1");
 
         WriteInfo("Launching AutoTranscribe...");
         Console.WriteLine();
 
-        // ── Run start.ps1 ────────────────────────────────────────────────────
-        var psi = new ProcessStartInfo
+        ProcessStartInfo psi;
+
+        if (File.Exists(batPath))
         {
-            FileName               = psExe,
-            Arguments              = string.Format("-ExecutionPolicy Bypass -File \"{0}\"", scriptPath),
-            UseShellExecute        = false,
-            RedirectStandardOutput = false,
-            RedirectStandardError  = false,
-            CreateNoWindow         = false,
-        };
+            psi = new ProcessStartInfo
+            {
+                FileName               = "cmd.exe",
+                Arguments              = string.Format("/c \"{0}\"", batPath),
+                WorkingDirectory       = exeDir,
+                UseShellExecute        = false,
+                RedirectStandardOutput = false,
+                RedirectStandardError  = false,
+                CreateNoWindow         = false,
+            };
+        }
+        else if (File.Exists(ps1Path))
+        {
+            string psExe = FindPowerShell() ?? "powershell.exe";
+            psi = new ProcessStartInfo
+            {
+                FileName               = psExe,
+                Arguments              = string.Format("-ExecutionPolicy Bypass -File \"{0}\"", ps1Path),
+                WorkingDirectory       = exeDir,
+                UseShellExecute        = false,
+                RedirectStandardOutput = false,
+                RedirectStandardError  = false,
+                CreateNoWindow         = false,
+            };
+        }
+        else
+        {
+            WriteError("start.bat or start.ps1 not found in application folder.");
+            Console.WriteLine();
+            Pause();
+            return;
+        }
 
         try
         {
@@ -62,7 +70,7 @@ class AutoTranscribeLauncher
             {
                 if (proc == null)
                 {
-                    WriteError("Failed to start PowerShell process.");
+                    WriteError("Failed to start launcher process.");
                     Pause();
                     return;
                 }
