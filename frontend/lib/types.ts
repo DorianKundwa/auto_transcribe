@@ -17,10 +17,13 @@ export interface TranscriptResult {
   segments: Segment[];
   language: string;
   duration: number;
+  has_wav?: boolean;
+  job_id?: string;
 }
 
 export type ProgressStage =
   | 'uploading'
+  | 'generating_audio'
   | 'loading_model'
   | 'transcribing'
   | 'aligning'
@@ -43,6 +46,17 @@ export interface TranscribeSettings {
   device: DeviceOption;
   pauseThreshold: number;
 }
+
+export interface TtsSettings {
+  voice: string;
+  langCode: string;
+  speed: number;
+  model: ModelOption;
+  device: DeviceOption;
+  pauseThreshold: number;
+}
+
+export type AppMode = 'transcribe' | 'tts';
 
 export interface EditAction {
   type: 'edit' | 'delete' | 'merge' | 'split' | 'add' | 'reorder';

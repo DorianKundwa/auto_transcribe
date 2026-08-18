@@ -5,9 +5,11 @@ FastAPI backend for AutoTranscribe.
 
 Routes:
   GET  /health                   – liveness check
-  POST /api/transcribe           – upload audio, start job, return job_id
+  POST /api/transcribe           – upload audio, start transcription job, return job_id
+  POST /api/tts                  – script to Kokoro TTS + WhisperX alignment, return job_id
   GET  /api/progress/{job_id}    – SSE stream of pipeline progress
   GET  /api/result/{job_id}      – fetch completed result
+  GET  /api/download/wav/{job_id}– download generated TTS WAV file
   DELETE /api/job/{job_id}       – cancel / clean up a job
 """
 
@@ -25,7 +27,8 @@ from typing import Any, Optional
 import aiofiles
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -38,7 +41,7 @@ app = FastAPI(title="AutoTranscribe API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -46,6 +49,8 @@ app.add_middleware(
 
 UPLOAD_DIR = Path(__file__).parent / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
+TTS_DIR = UPLOAD_DIR / "tts_wav"
+TTS_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".webm"}
 
@@ -55,18 +60,34 @@ ALLOWED_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".webm"}
 _jobs: dict[str, dict[str, Any]] = {}
 
 
-def _new_job(job_id: str, audio_path: str) -> dict[str, Any]:
+def _new_job(
+    job_id: str,
+    audio_path: str = "",
+    job_type: str = "transcribe",
+) -> dict[str, Any]:
     return {
         "id": job_id,
+        "type": job_type,
         "audio_path": audio_path,
+        "wav_path": None,
         "status": "queued",   # queued | running | complete | error
-        "stage": "uploading",
+        "stage": "uploading" if job_type == "transcribe" else "generating_audio",
         "pct": 0,
         "result": None,
         "error": None,
         "events": asyncio.Queue(),   # SSE events
         "created_at": time.time(),
     }
+
+
+class TtsRequest(BaseModel):
+    script: str = Field(..., description="Script text to synthesize")
+    voice: str = Field("af_heart", description="Kokoro voice name")
+    lang_code: str = Field("a", description="Kokoro language code (e.g. 'a' for American English)")
+    speed: float = Field(1.0, ge=0.5, le=2.0, description="Speech speed factor")
+    model: str = Field("base", description="WhisperX model size")
+    device: str = Field("auto", description="Compute device: auto, cuda, or cpu")
+    pause_threshold: float = Field(0.75, ge=0.1, le=5.0, description="Sentence pause threshold in seconds")
 
 
 # ---------------------------------------------------------------------------
@@ -78,7 +99,7 @@ async def health():
 
 
 # ---------------------------------------------------------------------------
-# POST /api/transcribe
+# POST /api/transcribe  (Audio upload -> WhisperX)
 # ---------------------------------------------------------------------------
 @app.post("/api/transcribe")
 async def transcribe_audio(
@@ -105,12 +126,12 @@ async def transcribe_audio(
         await f.write(content)
 
     # Create job record
-    job = _new_job(job_id, str(audio_path))
+    job = _new_job(job_id, str(audio_path), job_type="transcribe")
     _jobs[job_id] = job
 
     # Start background task
     background_tasks.add_task(
-        _run_job,
+        _run_transcribe_job,
         job_id=job_id,
         model_name=model,
         language=language if language and language != "auto" else None,
@@ -122,9 +143,40 @@ async def transcribe_audio(
 
 
 # ---------------------------------------------------------------------------
-# Background worker
+# POST /api/tts  (Script -> Kokoro TTS -> WAV -> WhisperX)
 # ---------------------------------------------------------------------------
-async def _run_job(
+@app.post("/api/tts")
+async def create_tts_job(
+    request: TtsRequest,
+    background_tasks: BackgroundTasks,
+):
+    script_text = request.script.strip()
+    if not script_text:
+        raise HTTPException(status_code=400, detail="Script text cannot be empty.")
+
+    job_id = str(uuid.uuid4())
+    job = _new_job(job_id, audio_path="", job_type="tts")
+    _jobs[job_id] = job
+
+    background_tasks.add_task(
+        _run_tts_job,
+        job_id=job_id,
+        script=script_text,
+        voice=request.voice,
+        lang_code=request.lang_code,
+        speed=request.speed,
+        model_name=request.model,
+        device_req=request.device,
+        pause_threshold=request.pause_threshold,
+    )
+
+    return {"job_id": job_id}
+
+
+# ---------------------------------------------------------------------------
+# Background workers
+# ---------------------------------------------------------------------------
+async def _run_transcribe_job(
     job_id: str,
     model_name: str,
     language: Optional[str],
@@ -162,7 +214,7 @@ async def _run_job(
         progress_cb("complete", 100)
 
     except Exception as exc:
-        logger.exception("Job %s failed", job_id)
+        logger.exception("Transcription Job %s failed", job_id)
         job["status"] = "error"
         job["error"] = str(exc)
         try:
@@ -170,13 +222,72 @@ async def _run_job(
         except Exception:
             pass
     finally:
-        # Clean up audio file
+        # Clean up uploaded audio file
         audio = job.get("audio_path", "")
         if audio and os.path.exists(audio):
             try:
                 os.remove(audio)
             except OSError:
                 pass
+
+
+async def _run_tts_job(
+    job_id: str,
+    script: str,
+    voice: str,
+    lang_code: str,
+    speed: float,
+    model_name: str,
+    device_req: str,
+    pause_threshold: float,
+) -> None:
+    job = _jobs.get(job_id)
+    if not job:
+        return
+
+    def progress_cb(stage: str, pct: int) -> None:
+        job["stage"] = stage
+        job["pct"] = pct
+        try:
+            job["events"].put_nowait({"stage": stage, "pct": pct})
+        except Exception:
+            pass
+
+    job["status"] = "running"
+    progress_cb("generating_audio", 0)
+
+    try:
+        from .tts import run_tts_and_transcribe
+
+        result = await run_tts_and_transcribe(
+            script=script,
+            voice=voice,
+            lang_code=lang_code,
+            speed=speed,
+            model_name=model_name,
+            device_req=device_req,
+            pause_threshold=pause_threshold,
+            progress_cb=progress_cb,
+        )
+        job["status"] = "complete"
+        job["wav_path"] = result.get("wav_path")
+        job["result"] = {
+            "segments": result["segments"],
+            "language": result["language"],
+            "duration": result["duration"],
+            "has_wav": bool(result.get("wav_path")),
+            "job_id": job_id,
+        }
+        progress_cb("complete", 100)
+
+    except Exception as exc:
+        logger.exception("TTS Job %s failed", job_id)
+        job["status"] = "error"
+        job["error"] = str(exc)
+        try:
+            job["events"].put_nowait({"stage": "error", "pct": 0, "error": str(exc)})
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -189,8 +300,8 @@ async def progress_stream(job_id: str):
         raise HTTPException(status_code=404, detail="Job not found")
 
     async def event_generator():
-        # Immediately emit current state
         import json
+        # Immediately emit current state
         yield {
             "data": json.dumps({"stage": job["stage"], "pct": job["pct"]}),
         }
@@ -233,6 +344,26 @@ async def get_result(job_id: str):
 
 
 # ---------------------------------------------------------------------------
+# GET /api/download/wav/{job_id}
+# ---------------------------------------------------------------------------
+@app.get("/api/download/wav/{job_id}")
+async def download_wav(job_id: str):
+    job = _jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    wav_path = job.get("wav_path")
+    if not wav_path or not os.path.exists(wav_path):
+        raise HTTPException(status_code=404, detail="WAV file not found or expired")
+
+    return FileResponse(
+        path=wav_path,
+        media_type="audio/wav",
+        filename=f"speech_{job_id[:8]}.wav",
+    )
+
+
+# ---------------------------------------------------------------------------
 # DELETE /api/job/{job_id}
 # ---------------------------------------------------------------------------
 @app.delete("/api/job/{job_id}")
@@ -248,11 +379,18 @@ async def delete_job(job_id: str):
         except OSError:
             pass
 
+    wav = job.get("wav_path", "")
+    if wav and os.path.exists(wav):
+        try:
+            os.remove(wav)
+        except OSError:
+            pass
+
     return {"ok": True}
 
 
 # ---------------------------------------------------------------------------
-# Startup: clean up stale uploads from previous run
+# Startup: clean up stale uploads & TTS wavs from previous run
 # ---------------------------------------------------------------------------
 @app.on_event("startup")
 async def startup_cleanup():
@@ -262,4 +400,11 @@ async def startup_cleanup():
                 f.unlink()
             except OSError:
                 pass
+    if TTS_DIR.exists():
+        for f in TTS_DIR.glob("*"):
+            if f.is_file():
+                try:
+                    f.unlink()
+                except OSError:
+                    pass
     logger.info("AutoTranscribe backend ready.")

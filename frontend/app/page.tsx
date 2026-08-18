@@ -3,30 +3,51 @@
 import { useState, useCallback, useRef } from 'react';
 import { AudioUploader } from '@/components/AudioUploader';
 import { SettingsPanel } from '@/components/SettingsPanel';
+import { TtsPanel } from '@/components/TtsPanel';
 import { ProgressPanel } from '@/components/ProgressPanel';
 import { AudioPlayer, AudioPlayerHandle } from '@/components/AudioPlayer';
 import { TranscriptEditor } from '@/components/TranscriptEditor';
 import { ExportPanel } from '@/components/ExportPanel';
 import { useTranscription } from '@/hooks/useTranscription';
-import { Segment, TranscribeSettings } from '@/lib/types';
-import { Mic2, RefreshCw, ExternalLink } from 'lucide-react';
+import { Segment, TranscribeSettings, TtsSettings, AppMode } from '@/lib/types';
+import { getWavDownloadUrl } from '@/lib/api';
+import { Mic2, Sparkles, RefreshCw, ExternalLink, Volume2, FileAudio } from 'lucide-react';
 
-const DEFAULT_SETTINGS: TranscribeSettings = {
+const DEFAULT_TRANSCRIBE_SETTINGS: TranscribeSettings = {
   model: 'base',
   language: 'auto',
   device: 'auto',
   pauseThreshold: 0.75,
 };
 
+const DEFAULT_TTS_SETTINGS: TtsSettings = {
+  voice: 'af_heart',
+  langCode: 'a',
+  speed: 1.0,
+  model: 'base',
+  device: 'auto',
+  pauseThreshold: 0.75,
+};
+
 export default function HomePage() {
+  const [mode, setMode] = useState<AppMode>('tts'); // Default to TTS or Transcribe
   const [file, setFile] = useState<File | null>(null);
   const [duration, setDuration] = useState(0);
-  const [settings, setSettings] = useState<TranscribeSettings>(DEFAULT_SETTINGS);
+  const [script, setScript] = useState('');
+  const [transcribeSettings, setTranscribeSettings] = useState<TranscribeSettings>(DEFAULT_TRANSCRIBE_SETTINGS);
+  const [ttsSettings, setTtsSettings] = useState<TtsSettings>(DEFAULT_TTS_SETTINGS);
   const [segments, setSegments] = useState<Segment[]>([]);
   const [currentTime, setCurrentTime] = useState(0);
   const playerRef = useRef<AudioPlayerHandle>(null);
 
   const tx = useTranscription();
+
+  const handleModeChange = (newMode: AppMode) => {
+    if (newMode === mode) return;
+    setMode(newMode);
+    tx.reset();
+    setSegments([]);
+  };
 
   const handleFileSelected = useCallback((f: File, dur: number) => {
     setFile(f);
@@ -45,10 +66,16 @@ export default function HomePage() {
   const handleTranscribe = useCallback(async () => {
     if (!file) return;
     setSegments([]);
-    await tx.startTranscription(file, settings);
-  }, [file, settings, tx]);
+    await tx.startTranscription(file, transcribeSettings);
+  }, [file, transcribeSettings, tx]);
 
-  // When transcription completes, populate the editor
+  const handleGenerateTts = useCallback(async () => {
+    if (!script.trim()) return;
+    setSegments([]);
+    await tx.startTTS(script, ttsSettings);
+  }, [script, ttsSettings, tx]);
+
+  // When transcription/TTS completes, populate the editor
   const prevResultRef = useRef(tx.result);
   if (tx.result && tx.result !== prevResultRef.current) {
     prevResultRef.current = tx.result;
@@ -60,10 +87,22 @@ export default function HomePage() {
   }, []);
 
   const isProcessing = tx.status === 'uploading' || tx.status === 'processing';
-  const canTranscribe = !!file && !isProcessing;
+  const canRun =
+    mode === 'transcribe'
+      ? !!file && !isProcessing
+      : !!script.trim() && !isProcessing;
+
   const showProgress = tx.status !== 'idle';
-  const showPlayer = !!file && tx.status === 'complete';
+  const isComplete = tx.status === 'complete';
   const showEditor = segments.length > 0;
+
+  // Determine audio source for player
+  const playerFile = mode === 'transcribe' ? file : null;
+  const playerSrc =
+    mode === 'tts' && tx.result?.job_id
+      ? getWavDownloadUrl(tx.result.job_id)
+      : null;
+  const showPlayer = isComplete && (!!playerFile || !!playerSrc);
 
   return (
     <div className="app-layout">
@@ -72,18 +111,44 @@ export default function HomePage() {
         <div className="header-inner">
           <div className="header-brand">
             <div className="brand-icon">
-              <Mic2 size={20} />
+              {mode === 'tts' ? <Sparkles size={20} /> : <Mic2 size={20} />}
             </div>
             <span className="brand-name">AutoTranscribe</span>
-            <span className="brand-tag">WhisperX</span>
+            <span className="brand-tag">Kokoro TTS + WhisperX</span>
           </div>
+
+          {/* Mode Switcher */}
+          <div className="mode-tabs">
+            <button
+              id="mode-tab-tts"
+              type="button"
+              className={`mode-tab ${mode === 'tts' ? 'active' : ''}`}
+              onClick={() => handleModeChange('tts')}
+              disabled={isProcessing}
+            >
+              <Sparkles size={15} />
+              Script → TTS
+            </button>
+            <button
+              id="mode-tab-transcribe"
+              type="button"
+              className={`mode-tab ${mode === 'transcribe' ? 'active' : ''}`}
+              onClick={() => handleModeChange('transcribe')}
+              disabled={isProcessing}
+            >
+              <Mic2 size={15} />
+              Audio → Transcribe
+            </button>
+          </div>
+
           <div className="header-actions">
             <a
-              href="https://github.com/DorianKundwa/auto_transcribe"
+              href="https://github.com/hexgrad/kokoro"
               target="_blank"
               rel="noopener noreferrer"
               className="header-link"
-              aria-label="GitHub repository"
+              aria-label="Kokoro TTS repository"
+              title="Kokoro TTS GitHub"
             >
               <ExternalLink size={18} />
             </a>
@@ -92,46 +157,82 @@ export default function HomePage() {
       </header>
 
       <main className="app-main">
-        {/* Left column: upload + settings + progress */}
+        {/* Left column: Controls + Settings + Progress */}
         <aside className="app-sidebar">
-          <section className="sidebar-section">
-            <h2 className="section-title">Audio</h2>
-            <AudioUploader
-              onFileSelected={handleFileSelected}
-              onClear={handleClear}
-              disabled={isProcessing}
-              selectedFile={file}
-              duration={duration}
-            />
-          </section>
+          {mode === 'transcribe' ? (
+            <>
+              <section className="sidebar-section">
+                <h2 className="section-title">Audio File</h2>
+                <AudioUploader
+                  onFileSelected={handleFileSelected}
+                  onClear={handleClear}
+                  disabled={isProcessing}
+                  selectedFile={file}
+                  duration={duration}
+                />
+              </section>
 
-          <section className="sidebar-section">
-            <h2 className="section-title">Settings</h2>
-            <SettingsPanel
-              settings={settings}
-              onChange={(partial) => setSettings((s) => ({ ...s, ...partial }))}
-              disabled={isProcessing}
-            />
-          </section>
+              <section className="sidebar-section">
+                <h2 className="section-title">WhisperX Settings</h2>
+                <SettingsPanel
+                  settings={transcribeSettings}
+                  onChange={(partial) => setTranscribeSettings((s) => ({ ...s, ...partial }))}
+                  disabled={isProcessing}
+                />
+              </section>
 
-          <button
-            id="transcribe-btn"
-            className={`transcribe-btn ${isProcessing ? 'loading' : ''}`}
-            onClick={handleTranscribe}
-            disabled={!canTranscribe}
-          >
-            {isProcessing ? (
-              <>
-                <RefreshCw size={18} className="spin" />
-                Processing…
-              </>
-            ) : (
-              <>
-                <Mic2 size={18} />
-                Transcribe
-              </>
-            )}
-          </button>
+              <button
+                id="transcribe-btn"
+                className={`transcribe-btn ${isProcessing ? 'loading' : ''}`}
+                onClick={handleTranscribe}
+                disabled={!canRun}
+              >
+                {isProcessing ? (
+                  <>
+                    <RefreshCw size={18} className="spin" />
+                    Transcribing…
+                  </>
+                ) : (
+                  <>
+                    <Mic2 size={18} />
+                    Transcribe Audio
+                  </>
+                )}
+              </button>
+            </>
+          ) : (
+            <>
+              <section className="sidebar-section">
+                <h2 className="section-title">Kokoro TTS Script</h2>
+                <TtsPanel
+                  script={script}
+                  onScriptChange={setScript}
+                  settings={ttsSettings}
+                  onSettingsChange={(partial) => setTtsSettings((s) => ({ ...s, ...partial }))}
+                  disabled={isProcessing}
+                />
+              </section>
+
+              <button
+                id="tts-generate-btn"
+                className={`transcribe-btn ${isProcessing ? 'loading' : ''}`}
+                onClick={handleGenerateTts}
+                disabled={!canRun}
+              >
+                {isProcessing ? (
+                  <>
+                    <RefreshCw size={18} className="spin" />
+                    Synthesizing & Aligning…
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={18} />
+                    Synthesize & Align Timestamps
+                  </>
+                )}
+              </button>
+            </>
+          )}
 
           {showProgress && (
             <section className="sidebar-section">
@@ -141,18 +242,20 @@ export default function HomePage() {
                 stageLabel={tx.stageLabel}
                 error={tx.error}
                 stageIndex={tx.stageIndex}
+                mode={mode}
               />
             </section>
           )}
         </aside>
 
-        {/* Right column: player + editor */}
+        {/* Right column: Audio Player + Interactive Transcript Editor */}
         <div className="app-content">
           {showPlayer && (
             <section className="content-section">
               <AudioPlayer
                 ref={playerRef}
-                file={file!}
+                file={playerFile}
+                src={playerSrc}
                 onTimeUpdate={setCurrentTime}
               />
             </section>
@@ -161,12 +264,20 @@ export default function HomePage() {
           {showEditor && (
             <>
               <section className="content-section editor-header-section">
-                <h2 className="section-title">Transcript</h2>
+                <h2 className="section-title">
+                  {mode === 'tts' ? 'Aligned Script & Timestamps' : 'Transcript'}
+                </h2>
                 <ExportPanel
                   segments={segments}
                   language={tx.result?.language}
                   duration={tx.result?.duration}
-                  filename={file?.name}
+                  filename={
+                    mode === 'transcribe'
+                      ? file?.name
+                      : `kokoro_tts_${ttsSettings.voice}`
+                  }
+                  jobId={tx.result?.job_id}
+                  hasWav={tx.result?.has_wav || mode === 'tts'}
                 />
               </section>
 
@@ -184,11 +295,24 @@ export default function HomePage() {
           {!showEditor && !isProcessing && (
             <div className="empty-state">
               <div className="empty-icon">
-                <Mic2 size={40} />
+                {mode === 'tts' ? <Sparkles size={46} /> : <FileAudio size={46} />}
               </div>
-              <h2 className="empty-title">Ready to transcribe</h2>
+              <h2 className="empty-title">
+                {mode === 'tts'
+                  ? 'Generate Speech & Word Timestamps'
+                  : 'Ready to transcribe audio'}
+              </h2>
               <p className="empty-sub">
-                Upload an audio file on the left and click <strong>Transcribe</strong> to get started.
+                {mode === 'tts' ? (
+                  <>
+                    Enter a script on the left, pick a <strong>Kokoro voice</strong>, and click{' '}
+                    <strong>Synthesize & Align Timestamps</strong>. You'll get a downloadable 24kHz WAV audio file and precise word-level timestamps (SRT, VTT, JSON, TXT).
+                  </>
+                ) : (
+                  <>
+                    Upload an audio file on the left and click <strong>Transcribe Audio</strong> to get started with WhisperX alignment.
+                  </>
+                )}
               </p>
             </div>
           )}

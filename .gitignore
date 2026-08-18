@@ -49,6 +49,7 @@ yarn-error.log*
 
 # Compiled launcher binary (build locally with: csc AutoTranscribeLauncher.cs /out:AutoTranscribe.exe)
 AutoTranscribe.exe
+test_audio/
 
 .venv/
 venv/

@@ -5,18 +5,29 @@ import { Segment } from '@/lib/types';
 import {
   toTxt, toSrt, toVtt, toJson, downloadFile,
 } from '@/lib/formatters';
-import { Copy, Download, ChevronDown, Check } from 'lucide-react';
+import { downloadWavFile } from '@/lib/api';
+import { Copy, Download, ChevronDown, Check, Music } from 'lucide-react';
 
 interface ExportPanelProps {
   segments: Segment[];
   language?: string;
   duration?: number;
   filename?: string;
+  jobId?: string;
+  hasWav?: boolean;
 }
 
-export function ExportPanel({ segments, language, duration, filename = 'transcript' }: ExportPanelProps) {
+export function ExportPanel({
+  segments,
+  language,
+  duration,
+  filename = 'transcript',
+  jobId,
+  hasWav = false,
+}: ExportPanelProps) {
   const [copied, setCopied] = useState(false);
   const [open, setOpen] = useState(false);
+  const [downloadingWav, setDownloadingWav] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const base = filename.replace(/\.[^.]+$/, '');
 
@@ -25,6 +36,18 @@ export function ExportPanel({ segments, language, duration, filename = 'transcri
     await navigator.clipboard.writeText(txt);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleDownloadWav = async () => {
+    if (!jobId) return;
+    try {
+      setDownloadingWav(true);
+      await downloadWavFile(jobId, `${base || 'speech'}.wav`);
+    } catch (err) {
+      console.error('Failed to download WAV', err);
+    } finally {
+      setDownloadingWav(false);
+    }
   };
 
   const exports = [
@@ -57,6 +80,19 @@ export function ExportPanel({ segments, language, duration, filename = 'transcri
 
   return (
     <div className="export-panel" ref={panelRef}>
+      {hasWav && jobId && (
+        <button
+          id="download-wav-btn"
+          className="export-btn export-btn--wav"
+          onClick={handleDownloadWav}
+          disabled={downloadingWav}
+          title="Download generated 24kHz WAV audio"
+        >
+          <Music size={15} />
+          {downloadingWav ? 'Downloading…' : 'Download WAV'}
+        </button>
+      )}
+
       <button
         id="copy-transcript-btn"
         className="export-btn export-btn--copy"
@@ -75,12 +111,28 @@ export function ExportPanel({ segments, language, duration, filename = 'transcri
           disabled={segments.length === 0}
         >
           <Download size={15} />
-          Export
+          Export Timestamps
           <ChevronDown size={13} className={`dropdown-chevron ${open ? 'open' : ''}`} />
         </button>
 
         {open && (
           <div className="export-menu" role="menu">
+            {hasWav && jobId && (
+              <button
+                key="wav"
+                id="export-wav-menu-btn"
+                className="export-menu-item"
+                role="menuitem"
+                onClick={() => {
+                  handleDownloadWav();
+                  setOpen(false);
+                }}
+              >
+                Download Audio
+                <span className="export-ext">.wav</span>
+              </button>
+            )}
+
             {exports.map((ex) => (
               <button
                 key={ex.ext}

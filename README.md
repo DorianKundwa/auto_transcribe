@@ -1,6 +1,10 @@
 # AutoTranscribe
 
-A local web application that converts audio files into clean, timestamped transcripts using **WhisperX** with word-level alignment.
+A local AI-powered studio that converts audio to transcripts and **synthesizes natural speech from scripts** with **Kokoro TTS + WhisperX word-level timestamp alignment**.
+
+```
+Script ──▶ Kokoro TTS (24kHz WAV) ──▶ WhisperX Alignment ──▶ Word-Level Timestamps & Interactive Editor
+```
 
 ```
 [0:00] You're standing in a checkout line.
@@ -10,35 +14,42 @@ A local web application that converts audio files into clean, timestamped transc
 
 ## Features
 
-- 🎤 **WhisperX transcription** with word-level alignment
+- ✨ **Script → Kokoro TTS → WAV → WhisperX Timestamps**:
+  - High quality speech synthesis with [Kokoro-82M](https://github.com/hexgrad/kokoro) (Apache licensed)
+  - Word-level time alignment using WhisperX
+  - Direct download of generated 24kHz **WAV audio**
+  - Downloadable timestamps in **SRT, VTT, JSON, and TXT** formats
+  - Multi-language and multi-voice support (American & British English, Spanish, French, Hindi, Italian, Portuguese, Japanese, Chinese)
+- 🎤 **Audio File Transcription**:
+  - Upload MP3, WAV, M4A, AAC, FLAC, OGG, WebM
+  - WhisperX transcription + phoneme alignment
 - ⏱️ **Accurate sentence timestamps** — from the first spoken word's time
 - ✏️ **Full transcript editor** with undo/redo, merge, split, delete
-- 🎵 **Synchronized audio player** — click any line to seek; active line highlights during playback
-- 📤 **Export** to TXT, SRT, VTT, JSON
-- 🌍 **Auto language detection** or manual selection
-- ⚡ **Model caching** — WhisperX stays loaded between jobs
-- 🔒 **100% local** — no audio is sent to third-party services
+- 🎵 **Synchronized audio player** — click any word/line to seek; active line highlights during playback
+- 📤 **Comprehensive Exports** — TXT, SRT, VTT, JSON + audio WAV
+- ⚡ **Model caching** — WhisperX & Kokoro pipelines stay loaded in memory between jobs
+- 🔒 **100% local** — no audio or text is sent to third-party services
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
 | Frontend | Next.js 14, React, TypeScript, Tailwind CSS |
-| Backend | Python, FastAPI, uvicorn |
-| Transcription | WhisperX |
-| Audio | FFmpeg |
+| Backend | Python, FastAPI, uvicorn, sse-starlette |
+| TTS Engine | Kokoro-82M (`kokoro`, `soundfile`) |
+| Transcription & Alignment | WhisperX, PyTorch, Torchaudio |
+| Audio Processing | FFmpeg |
 
 ## Prerequisites
 
 - **Python 3.9–3.11**
 - **Node.js 18+**
 - **FFmpeg** — must be on your `PATH`
+- **espeak-ng** — required by Kokoro for text-to-phoneme conversion:
+  - Windows: `winget install espeak-ng` or `choco install espeak`
+  - Linux: `sudo apt install espeak-ng`
+  - macOS: `brew install espeak`
 - **CUDA** (optional) — for GPU acceleration
-
-Install FFmpeg:
-- Windows: `winget install ffmpeg` or download from https://ffmpeg.org
-- macOS: `brew install ffmpeg`
-- Linux: `sudo apt install ffmpeg`
 
 ## Setup
 
@@ -104,47 +115,28 @@ Open **http://localhost:3000**
 
 ## Usage
 
-1. **Upload** an audio file (MP3, WAV, M4A, AAC, FLAC, OGG)
-2. **Configure** the WhisperX model, language, and compute device
-3. Click **Transcribe**
-4. Watch the pipeline progress: Upload → Load model → Transcribe → Align → Segment
-5. **Click any timestamp** to jump to that moment in the audio
-6. **Edit** transcript lines inline; undo/redo your changes
-7. **Export** to TXT, SRT, VTT, or JSON
+### Mode 1: Script → Kokoro TTS → WAV → WhisperX Timestamps
+1. Select **Script → TTS** in the top navigation
+2. Type or paste your script text (or click *Sample*)
+3. Choose a voice (e.g. `Heart`, `Bella`, `Adam`, `George`, etc.) and speech speed
+4. Click **Synthesize & Align Timestamps**
+5. Listen to the generated audio in the synchronized player
+6. Download the **WAV audio** and the **aligned timestamps** (SRT, VTT, JSON, TXT)
 
-## Models
-
-| Model | VRAM | Speed | Quality |
-|-------|------|-------|---------|
-| tiny | ~1 GB | Fastest | ★★☆☆☆ |
-| base | ~1 GB | Fast | ★★★☆☆ |
-| small | ~2 GB | Balanced | ★★★★☆ |
-| medium | ~5 GB | Slow | ★★★★☆ |
-| large-v2 | ~10 GB | Slowest | ★★★★★ |
-| large-v3 | ~10 GB | Slowest | ★★★★★ |
-
-On CPU, `base` or `small` is recommended.
-
-## Sentence Segmentation
-
-AutoTranscribe does **not** split sentences at arbitrary intervals. It:
-
-1. Gets word-level timestamps from WhisperX alignment
-2. Detects sentence boundaries using punctuation (`.`, `?`, `!`)
-3. Detects long pauses between words (configurable threshold, default 0.75s)
-4. Groups words into natural sentences
-5. Sets each sentence's timestamp to the **first word's start time**
+### Mode 2: Audio File Transcription
+1. Select **Audio → Transcribe**
+2. Upload an audio file (MP3, WAV, M4A, etc.)
+3. Choose your WhisperX model and device
+4. Click **Transcribe Audio**
+5. Review, edit, seek, and export your transcript
 
 ## Export Formats
 
-**TXT**
-```
-[0:00] You're standing in a checkout line.
-[0:02] Your phone battery died two minutes ago.
-```
+**WAV Audio**
+- 24,000 Hz studio-quality mono audio generated by Kokoro TTS.
 
 **SRT**
-```
+```srt
 1
 00:00:00,000 --> 00:00:01,200
 You're standing in a checkout line.
@@ -169,15 +161,16 @@ You're standing in a checkout line.
 ```
 auto_transcribe/
 ├── backend/
-│   ├── main.py          # FastAPI app, routes, SSE progress
+│   ├── main.py          # FastAPI app, TTS & transcribe endpoints, SSE progress
+│   ├── tts.py           # Kokoro TTS pipeline + synthesis & alignment
 │   ├── transcribe.py    # WhisperX pipeline + model cache
 │   ├── segmentation.py  # Word → sentence grouping
 │   └── requirements.txt
 ├── frontend/
-│   ├── app/             # Next.js App Router pages
-│   ├── components/      # React UI components
-│   ├── hooks/           # Custom React hooks
-│   └── lib/             # Types, API client, formatters
+│   ├── app/             # Next.js App Router pages & styles
+│   ├── components/      # React UI components (TtsPanel, AudioPlayer, etc.)
+│   ├── hooks/           # useTranscription, useUndoRedo
+│   └── lib/             # API client, types, formatters
 ├── start.ps1            # Windows quick-start script
 └── README.md
 ```

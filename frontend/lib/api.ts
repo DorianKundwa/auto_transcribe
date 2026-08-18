@@ -1,6 +1,10 @@
-import { ProgressEvent, TranscriptResult, Segment, TranscribeSettings } from './types';
+import { ProgressEvent, TranscriptResult, Segment, TranscribeSettings, TtsSettings } from './types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:8000';
+
+export function getWavDownloadUrl(jobId: string): string {
+  return `${API_BASE}/api/download/wav/${jobId}`;
+}
 
 export async function submitTranscription(
   file: File,
@@ -21,6 +25,35 @@ export async function submitTranscription(
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(err.detail ?? 'Upload failed');
+  }
+
+  const { job_id } = await res.json();
+  return job_id;
+}
+
+export async function submitTTS(
+  script: string,
+  settings: TtsSettings,
+): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/tts`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      script,
+      voice: settings.voice,
+      lang_code: settings.langCode,
+      speed: settings.speed,
+      model: settings.model,
+      device: settings.device,
+      pause_threshold: settings.pauseThreshold,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail ?? 'TTS request failed');
   }
 
   const { job_id } = await res.json();
@@ -70,7 +103,29 @@ export async function fetchResult(jobId: string): Promise<TranscriptResult> {
     }),
   );
 
-  return { segments, language: raw.language, duration: raw.duration };
+  return {
+    segments,
+    language: raw.language,
+    duration: raw.duration,
+    has_wav: raw.has_wav ?? false,
+    job_id: jobId,
+  };
+}
+
+export async function downloadWavFile(jobId: string, filename = 'speech.wav'): Promise<void> {
+  const res = await fetch(getWavDownloadUrl(jobId));
+  if (!res.ok) {
+    throw new Error('Failed to download WAV file');
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 export async function deleteJob(jobId: string): Promise<void> {

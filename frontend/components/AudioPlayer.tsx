@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHand
 import { Play, Pause, Volume2, VolumeX, SkipBack, SkipForward } from 'lucide-react';
 
 function formatTime(secs: number): string {
+  if (isNaN(secs) || secs < 0) return '0:00';
   const h = Math.floor(secs / 3600);
   const m = Math.floor((secs % 3600) / 60);
   const s = Math.floor(secs % 60);
@@ -16,12 +17,13 @@ export interface AudioPlayerHandle {
 }
 
 interface AudioPlayerProps {
-  file: File;
+  file?: File | null;
+  src?: string | null;
   onTimeUpdate?: (time: number) => void;
 }
 
 export const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(
-  ({ file, onTimeUpdate }, ref) => {
+  ({ file, src, onTimeUpdate }, ref) => {
     const audioRef = useRef<HTMLAudioElement>(null);
     const [playing, setPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
@@ -41,12 +43,20 @@ export const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(
     }));
 
     useEffect(() => {
-      const url = URL.createObjectURL(file);
-      setSrcUrl(url);
-      setPlaying(false);
-      setCurrentTime(0);
-      return () => URL.revokeObjectURL(url);
-    }, [file]);
+      if (file) {
+        const url = URL.createObjectURL(file);
+        setSrcUrl(url);
+        setPlaying(false);
+        setCurrentTime(0);
+        return () => URL.revokeObjectURL(url);
+      } else if (src) {
+        setSrcUrl(src);
+        setPlaying(false);
+        setCurrentTime(0);
+      } else {
+        setSrcUrl(null);
+      }
+    }, [file, src]);
 
     const togglePlay = useCallback(() => {
       const a = audioRef.current;
