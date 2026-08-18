@@ -29,26 +29,13 @@ class AutoTranscribeLauncher
 
         ProcessStartInfo psi;
 
-        if (File.Exists(batPath))
-        {
-            psi = new ProcessStartInfo
-            {
-                FileName               = "cmd.exe",
-                Arguments              = string.Format("/c \"{0}\"", batPath),
-                WorkingDirectory       = exeDir,
-                UseShellExecute        = false,
-                RedirectStandardOutput = false,
-                RedirectStandardError  = false,
-                CreateNoWindow         = false,
-            };
-        }
-        else if (File.Exists(ps1Path))
+        if (File.Exists(ps1Path))
         {
             string psExe = FindPowerShell() ?? "powershell.exe";
             psi = new ProcessStartInfo
             {
                 FileName               = psExe,
-                Arguments              = string.Format("-ExecutionPolicy Bypass -File \"{0}\"", ps1Path),
+                Arguments              = string.Format("-ExecutionPolicy Bypass -File \"{0}\" -Prod", ps1Path),
                 WorkingDirectory       = exeDir,
                 UseShellExecute        = false,
                 RedirectStandardOutput = false,
@@ -58,7 +45,7 @@ class AutoTranscribeLauncher
         }
         else
         {
-            WriteError("start.bat or start.ps1 not found in application folder.");
+            WriteError("start.ps1 not found in application folder.");
             Console.WriteLine();
             Pause();
             return;

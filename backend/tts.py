@@ -25,6 +25,8 @@ logger = logging.getLogger(__name__)
 # Kokoro pipeline cache (one per lang_code)
 # ---------------------------------------------------------------------------
 _kokoro_cache: dict[str, Any] = {}   # key: lang_code
+_shared_kmodel: Any = None          # shared KModel instance
+_preview_cache: dict[str, bytes] = {} # key: hash string
 
 TTS_DIR = Path(__file__).parent / "uploads" / "tts_wav"
 TTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -32,17 +34,26 @@ TTS_DIR.mkdir(parents=True, exist_ok=True)
 
 def _get_kokoro_pipeline(lang_code: str) -> Any:
     """Load or reuse a KPipeline for the given lang_code."""
+    global _shared_kmodel
     if lang_code not in _kokoro_cache:
         try:
             from kokoro import KPipeline  # type: ignore
         except ImportError as exc:
             raise RuntimeError(
                 "The 'kokoro' package is not installed. "
-                "Run: pip install kokoro>=0.9.4 soundfile"
+                "Please pip install kokoro."
             ) from exc
-        logger.info("Loading Kokoro pipeline for lang_code='%s' …", lang_code)
-        _kokoro_cache[lang_code] = KPipeline(lang_code=lang_code)
+
+        logger.info(f"Loading Kokoro pipeline for lang_code={lang_code!r} …")
+        if _shared_kmodel is None:
+            pipe = KPipeline(lang_code=lang_code)
+            _shared_kmodel = pipe.model
+        else:
+            pipe = KPipeline(lang_code=lang_code, model=_shared_kmodel)
+            
+        _kokoro_cache[lang_code] = pipe
         logger.info("Kokoro pipeline ready.")
+
     return _kokoro_cache[lang_code]
 
 
@@ -175,6 +186,16 @@ def synthesize_preview(
     Fast audio preview generator for a single voice or voice blend.
     Returns in-memory WAV audio bytes.
     """
+    sample_text = (
+        text.strip()
+        if text and text.strip()
+        else "Hello! This is a preview of the selected Kokoro voice."
+    )
+    
+    cache_key = f"{voice}|{lang_code}|{speed}|{sample_text}"
+    if cache_key in _preview_cache:
+        return _preview_cache[cache_key]
+
     try:
         import soundfile as sf
         import numpy as np
@@ -185,12 +206,6 @@ def synthesize_preview(
 
     pipeline = _get_kokoro_pipeline(lang_code)
     resolved_voice = _resolve_voice_tensor(pipeline, voice)
-
-    sample_text = (
-        text.strip()
-        if text and text.strip()
-        else "Hello! This is a preview of the selected Kokoro voice."
-    )
 
     chunks: list[Any] = []
     try:
@@ -214,7 +229,10 @@ def synthesize_preview(
     buf = io.BytesIO()
     sf.write(buf, audio_np, 24000, format="WAV")
     buf.seek(0)
-    return buf.read()
+    
+    wav_bytes = buf.read()
+    _preview_cache[cache_key] = wav_bytes
+    return wav_bytes
 
 
 # ---------------------------------------------------------------------------

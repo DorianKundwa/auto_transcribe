@@ -25,6 +25,10 @@ import uuid
 from pathlib import Path
 from typing import Any, Optional, Union
 
+# Force HuggingFace and Torch to use local project storage
+os.environ["HF_HOME"] = str(Path(__file__).parent / "models" / "hf_cache")
+os.environ["TORCH_HOME"] = str(Path(__file__).parent / "models" / "torch_cache")
+
 import aiofiles
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -417,8 +421,27 @@ async def delete_job(job_id: str):
 # ---------------------------------------------------------------------------
 # Startup: clean up stale uploads & TTS wavs from previous run
 # ---------------------------------------------------------------------------
+def _preload_models():
+    """Background task to preload models to disk and RAM."""
+    try:
+        logger.info("Downloading/verifying Kokoro-82M and default voices...")
+        from huggingface_hub import snapshot_download
+        snapshot_download(
+            repo_id="hexgrad/Kokoro-82M",
+            allow_patterns=["config.json", "*.pth", "voices/af_heart.pt", "voices/am_michael.pt"]
+        )
+        
+        logger.info("Initializing English/British phonemizers...")
+        from backend.tts import _get_kokoro_pipeline
+        _get_kokoro_pipeline("a")
+        _get_kokoro_pipeline("b")
+        logger.info("Kokoro models preloaded successfully.")
+    except Exception as exc:
+        logger.error(f"Failed to preload models: {exc}")
+
 @app.on_event("startup")
 async def startup_cleanup():
+    asyncio.create_task(asyncio.to_thread(_preload_models))
     for f in UPLOAD_DIR.glob("*"):
         if f.is_file():
             try:

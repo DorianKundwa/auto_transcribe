@@ -96,3 +96,5 @@ yarn-error.log*
 
 # Cloned Kokoro repository
 kokoro/
+
+backend/models/
