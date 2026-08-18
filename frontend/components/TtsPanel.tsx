@@ -336,7 +336,7 @@ export function TtsPanel({
                     mode: 'blend',
                     voiceBlend: [
                       { voice: settings.voice || 'af_heart', weight: 60 },
-                      { voice: 'am_adam', weight: 40 },
+                      { voice: 'am_michael', weight: 40 },
                     ],
                   });
                 } else {

@@ -25,7 +25,7 @@ const DEFAULT_TTS_SETTINGS: TtsSettings = {
   voice: 'af_heart',
   voiceBlend: [
     { voice: 'af_heart', weight: 60 },
-    { voice: 'am_adam', weight: 40 },
+    { voice: 'am_michael', weight: 40 },
   ],
   langCode: 'a',
   speed: 1.0,
