@@ -7,6 +7,7 @@ Routes:
   GET  /health                   – liveness check
   POST /api/transcribe           – upload audio, start transcription job, return job_id
   POST /api/tts                  – script to Kokoro TTS + WhisperX alignment, return job_id
+  POST /api/tts/preview          – instant audio preview of single voice or multi-voice blend
   GET  /api/progress/{job_id}    – SSE stream of pipeline progress
   GET  /api/result/{job_id}      – fetch completed result
   GET  /api/download/wav/{job_id}– download generated TTS WAV file
@@ -22,12 +23,12 @@ import shutil
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 import aiofiles
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
@@ -82,12 +83,19 @@ def _new_job(
 
 class TtsRequest(BaseModel):
     script: str = Field(..., description="Script text to synthesize")
-    voice: str = Field("af_heart", description="Kokoro voice name")
+    voice: Any = Field("af_heart", description="Single voice ID, blend string, or list of voice objects with weights")
     lang_code: str = Field("a", description="Kokoro language code (e.g. 'a' for American English)")
     speed: float = Field(1.0, ge=0.5, le=2.0, description="Speech speed factor")
     model: str = Field("base", description="WhisperX model size")
     device: str = Field("auto", description="Compute device: auto, cuda, or cpu")
     pause_threshold: float = Field(0.75, ge=0.1, le=5.0, description="Sentence pause threshold in seconds")
+
+
+class TtsPreviewRequest(BaseModel):
+    voice: Any = Field("af_heart", description="Single voice ID, blend string, or list of voice objects with weights")
+    lang_code: str = Field("a", description="Kokoro language code")
+    speed: float = Field(1.0, ge=0.5, le=2.0, description="Speech speed factor")
+    text: Optional[str] = Field(None, description="Optional preview text")
 
 
 # ---------------------------------------------------------------------------
@@ -174,6 +182,26 @@ async def create_tts_job(
 
 
 # ---------------------------------------------------------------------------
+# POST /api/tts/preview  (Fast voice or blend audio preview)
+# ---------------------------------------------------------------------------
+@app.post("/api/tts/preview")
+async def preview_tts_voice(request: TtsPreviewRequest):
+    try:
+        from .tts import synthesize_preview
+        audio_bytes = await asyncio.to_thread(
+            synthesize_preview,
+            voice=request.voice,
+            lang_code=request.lang_code,
+            speed=request.speed,
+            text=request.text,
+        )
+        return Response(content=audio_bytes, media_type="audio/wav")
+    except Exception as exc:
+        logger.exception("Voice preview failed")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ---------------------------------------------------------------------------
 # Background workers
 # ---------------------------------------------------------------------------
 async def _run_transcribe_job(
@@ -234,7 +262,7 @@ async def _run_transcribe_job(
 async def _run_tts_job(
     job_id: str,
     script: str,
-    voice: str,
+    voice: Any,
     lang_code: str,
     speed: float,
     model_name: str,
@@ -301,7 +329,6 @@ async def progress_stream(job_id: str):
 
     async def event_generator():
         import json
-        # Immediately emit current state
         yield {
             "data": json.dumps({"stage": job["stage"], "pct": job["pct"]}),
         }
@@ -309,7 +336,6 @@ async def progress_stream(job_id: str):
         while True:
             status = job["status"]
             if status in ("complete", "error"):
-                # Drain remaining events
                 while not job["events"].empty():
                     evt = await job["events"].get()
                     yield {"data": json.dumps(evt)}
@@ -319,7 +345,6 @@ async def progress_stream(job_id: str):
                 evt = await asyncio.wait_for(job["events"].get(), timeout=30.0)
                 yield {"data": json.dumps(evt)}
             except asyncio.TimeoutError:
-                # Send a keepalive comment
                 yield {"comment": "keepalive"}
 
     return EventSourceResponse(event_generator())

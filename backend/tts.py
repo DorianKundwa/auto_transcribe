@@ -1,28 +1,28 @@
 """
 tts.py
 ------
-Kokoro TTS pipeline for AutoTranscribe.
+Kokoro TTS pipeline for AutoTranscribe with multi-voice blending and instant preview.
 
 Provides:
   run_tts_and_transcribe(script, voice, lang_code, speed, model_name,
                          device_req, pause_threshold, progress_cb)
-  → saves a WAV to disk, then runs WhisperX word-level alignment on it
-  → returns { segments, language, duration, wav_path }
+  synthesize_preview(voice, lang_code, speed, text) -> bytes (WAV)
 """
 
 from __future__ import annotations
 
 import asyncio
+import io
 import logging
 import os
 import uuid
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Union
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Kokoro pipeline cache  (one per lang_code)
+# Kokoro pipeline cache (one per lang_code)
 # ---------------------------------------------------------------------------
 _kokoro_cache: dict[str, Any] = {}   # key: lang_code
 
@@ -46,20 +46,85 @@ def _get_kokoro_pipeline(lang_code: str) -> Any:
     return _kokoro_cache[lang_code]
 
 
+def _resolve_voice_tensor(pipeline: Any, voice: Any) -> Any:
+    """
+    Resolve single voice string, blend string syntax (e.g. 'af_heart:0.6,af_bella:0.4'),
+    or list of voices with weights into a style tensor.
+    """
+    if isinstance(voice, str):
+        voice_str = voice.strip()
+        if "," in voice_str or ":" in voice_str:
+            parts = [p.strip() for p in voice_str.split(",") if p.strip()]
+            entries = []
+            for p in parts:
+                if ":" in p:
+                    v_name, w_str = p.split(":", 1)
+                    try:
+                        w = float(w_str)
+                    except ValueError:
+                        w = 1.0
+                    entries.append((v_name.strip(), w))
+                else:
+                    entries.append((p.strip(), 1.0))
+            if not entries:
+                return pipeline.load_voice("af_heart")
+            total_w = sum(w for _, w in entries) or 1.0
+            blended = None
+            for v_name, w in entries:
+                norm_w = w / total_w
+                t = pipeline.load_voice(v_name)
+                if blended is None:
+                    blended = t * norm_w
+                else:
+                    blended += t * norm_w
+            return blended
+        else:
+            return pipeline.load_voice(voice_str)
+
+    elif isinstance(voice, list):
+        if not voice:
+            return pipeline.load_voice("af_heart")
+
+        entries = []
+        for item in voice:
+            if isinstance(item, dict):
+                v_name = item.get("voice") or item.get("id") or "af_heart"
+                try:
+                    w = float(item.get("weight", 1.0))
+                except (ValueError, TypeError):
+                    w = 1.0
+                entries.append((str(v_name).strip(), w))
+            elif isinstance(item, str):
+                entries.append((item.strip(), 1.0))
+
+        total_w = sum(w for _, w in entries) or 1.0
+        blended = None
+        for v_name, w in entries:
+            norm_w = w / total_w
+            t = pipeline.load_voice(v_name)
+            if blended is None:
+                blended = t * norm_w
+            else:
+                blended += t * norm_w
+        return blended
+
+    return voice
+
+
 # ---------------------------------------------------------------------------
 # TTS synthesis
 # ---------------------------------------------------------------------------
 
 def _synthesize(
     script: str,
-    voice: str,
+    voice: Any,
     lang_code: str,
     speed: float,
     output_path: str,
 ) -> None:
     """
     Run Kokoro synthesis synchronously and write a 24 kHz WAV file.
-    Raises RuntimeError with a helpful message if espeak-ng is missing.
+    Supports single voices and multi-voice blends.
     """
     try:
         import soundfile as sf  # type: ignore
@@ -71,10 +136,11 @@ def _synthesize(
         ) from exc
 
     pipeline = _get_kokoro_pipeline(lang_code)
+    resolved_voice = _resolve_voice_tensor(pipeline, voice)
 
     chunks: list[Any] = []
     try:
-        for _gs, _ps, audio in pipeline(script, voice=voice, speed=speed):
+        for _gs, _ps, audio in pipeline(script, voice=resolved_voice, speed=speed):
             chunks.append(audio)
     except Exception as exc:
         err_str = str(exc).lower()
@@ -92,10 +158,59 @@ def _synthesize(
     if not chunks:
         raise RuntimeError("Kokoro produced no audio output for the given script.")
 
-    import numpy as np
     audio_np = np.concatenate(chunks, axis=0)
     sf.write(output_path, audio_np, 24000)
     logger.info("TTS WAV written to %s (%.1f s)", output_path, len(audio_np) / 24000)
+
+
+def synthesize_preview(
+    voice: Any,
+    lang_code: str = "a",
+    speed: float = 1.0,
+    text: Optional[str] = None,
+) -> bytes:
+    """
+    Fast audio preview generator for a single voice or voice blend.
+    Returns in-memory WAV audio bytes.
+    """
+    try:
+        import soundfile as sf
+        import numpy as np
+    except ImportError as exc:
+        raise RuntimeError(
+            "Missing 'soundfile' or 'numpy'. Run: pip install soundfile numpy"
+        ) from exc
+
+    pipeline = _get_kokoro_pipeline(lang_code)
+    resolved_voice = _resolve_voice_tensor(pipeline, voice)
+
+    sample_text = (
+        text.strip()
+        if text and text.strip()
+        else "Hello! This is a preview of the selected Kokoro voice."
+    )
+
+    chunks: list[Any] = []
+    try:
+        for _gs, _ps, audio in pipeline(sample_text, voice=resolved_voice, speed=speed):
+            chunks.append(audio)
+    except Exception as exc:
+        err_str = str(exc).lower()
+        if "espeak" in err_str or "phonemizer" in err_str:
+            raise RuntimeError(
+                "Kokoro requires espeak-ng for text-to-phoneme conversion. "
+                "Please install espeak-ng."
+            ) from exc
+        raise
+
+    if not chunks:
+        raise RuntimeError("Failed to synthesize preview audio.")
+
+    audio_np = np.concatenate(chunks, axis=0)
+    buf = io.BytesIO()
+    sf.write(buf, audio_np, 24000, format="WAV")
+    buf.seek(0)
+    return buf.read()
 
 
 # ---------------------------------------------------------------------------
@@ -104,7 +219,7 @@ def _synthesize(
 
 async def run_tts_and_transcribe(
     script: str,
-    voice: str = "af_heart",
+    voice: Any = "af_heart",
     lang_code: str = "a",
     speed: float = 1.0,
     model_name: str = "base",
@@ -113,7 +228,7 @@ async def run_tts_and_transcribe(
     progress_cb: Optional[Callable[[str, int], None]] = None,
 ) -> dict[str, Any]:
     """
-    Full TTS + timestamp pipeline.
+    Full TTS + timestamp pipeline supporting voice blending.
 
     Progress stages:
       generating_audio   0 → 40
@@ -122,16 +237,8 @@ async def run_tts_and_transcribe(
       aligning          65 → 85
       segmenting        85 → 95
       complete          95 → 100
-
-    Returns:
-      {
-        "segments":  [...],
-        "language":  "en",
-        "duration":  12.4,
-        "wav_path":  "/abs/path/to/file.wav"   ← kept on disk for download
-      }
     """
-    from .transcribe import run_transcription  # reuse existing pipeline
+    from .transcribe import run_transcription
 
     def emit(stage: str, pct: int) -> None:
         if progress_cb:
@@ -140,31 +247,24 @@ async def run_tts_and_transcribe(
             except Exception:
                 pass
 
-    # ------------------------------------------------------------------ #
-    # 1. Kokoro TTS synthesis → WAV                                       #
-    # ------------------------------------------------------------------ #
+    # 1. Kokoro TTS synthesis → WAV
     emit("generating_audio", 0)
     wav_filename = f"tts_{uuid.uuid4()}.wav"
     wav_path = str(TTS_DIR / wav_filename)
 
-    logger.info("Starting Kokoro TTS synthesis (voice=%s, speed=%.1f) …", voice, speed)
+    logger.info("Starting Kokoro TTS synthesis (speed=%.1f) …", speed)
     await asyncio.to_thread(_synthesize, script, voice, lang_code, speed, wav_path)
     emit("generating_audio", 40)
 
-    # ------------------------------------------------------------------ #
-    # 2. WhisperX transcription + alignment                               #
-    # ------------------------------------------------------------------ #
-    # We override the emit calls from run_transcription by wrapping them
-    # so that their 0–100 range maps to 40–100 in our overall progress.
+    # 2. WhisperX transcription + alignment
     def scaled_cb(stage: str, pct: int) -> None:
-        # Remap run_transcription's 0–100 → our 40–100
         scaled = 40 + int(pct * 0.60)
         emit(stage, min(scaled, 99))
 
     result = await run_transcription(
         audio_path=wav_path,
         model_name=model_name,
-        language=None,          # let WhisperX auto-detect from synthesised speech
+        language=None,
         device_req=device_req,
         pause_threshold=pause_threshold,
         progress_cb=scaled_cb,

@@ -47,8 +47,15 @@ export interface TranscribeSettings {
   pauseThreshold: number;
 }
 
-export interface TtsSettings {
+export interface VoiceBlendItem {
   voice: string;
+  weight: number; // e.g. 50 (percentage or ratio)
+}
+
+export interface TtsSettings {
+  mode: 'single' | 'blend';
+  voice: string;                  // active single voice ID
+  voiceBlend: VoiceBlendItem[];    // multi-selected voices with weights
   langCode: string;
   speed: number;
   model: ModelOption;

@@ -21,7 +21,12 @@ const DEFAULT_TRANSCRIBE_SETTINGS: TranscribeSettings = {
 };
 
 const DEFAULT_TTS_SETTINGS: TtsSettings = {
+  mode: 'single',
   voice: 'af_heart',
+  voiceBlend: [
+    { voice: 'af_heart', weight: 60 },
+    { voice: 'am_adam', weight: 40 },
+  ],
   langCode: 'a',
   speed: 1.0,
   model: 'base',
@@ -274,7 +279,9 @@ export default function HomePage() {
                   filename={
                     mode === 'transcribe'
                       ? file?.name
-                      : `kokoro_tts_${ttsSettings.voice}`
+                      : ttsSettings.mode === 'blend'
+                      ? `kokoro_blend_${ttsSettings.voiceBlend.map((b) => b.voice).join('_')}`
+                      : `kokoro_${ttsSettings.voice}`
                   }
                   jobId={tx.result?.job_id}
                   hasWav={tx.result?.has_wav || mode === 'tts'}

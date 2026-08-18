@@ -1,8 +1,24 @@
 'use client';
 
-import { TtsSettings, ModelOption, DeviceOption } from '@/lib/types';
-import { Sparkles, Trash2, Sliders, Volume2 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { TtsSettings, VoiceBlendItem, ModelOption, DeviceOption } from '@/lib/types';
+import { previewTtsVoice } from '@/lib/api';
+import {
+  Sparkles,
+  Trash2,
+  Sliders,
+  Volume2,
+  Play,
+  Pause,
+  Plus,
+  X,
+  Layers,
+  User,
+  Search,
+  Check,
+  RotateCcw,
+  Loader2,
+} from 'lucide-react';
 
 export interface KokoroVoiceOption {
   id: string;
@@ -127,6 +143,23 @@ export function TtsPanel({
   disabled = false,
 }: TtsPanelProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showVoiceLibrary, setShowVoiceLibrary] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [genderFilter, setGenderFilter] = useState<'All' | 'Female' | 'Male'>('All');
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewVoiceId, setPreviewVoiceId] = useState<string | null>(null);
+  const [isPlayingPreview, setIsPlayingPreview] = useState(false);
+
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (previewAudioRef.current) {
+        previewAudioRef.current.pause();
+        previewAudioRef.current = null;
+      }
+    };
+  }, []);
 
   const wordCount = script.trim() ? script.trim().split(/\s+/).length : 0;
   const charCount = script.length;
@@ -142,6 +175,89 @@ export function TtsPanel({
       onSettingsChange({ voice: voiceId });
     }
   };
+
+  const handlePlayPreview = async (voiceTarget?: string | VoiceBlendItem[]) => {
+    try {
+      // If already playing this preview, toggle pause
+      if (previewAudioRef.current && isPlayingPreview) {
+        previewAudioRef.current.pause();
+        setIsPlayingPreview(false);
+        return;
+      }
+
+      setPreviewLoading(true);
+      const target =
+        voiceTarget ??
+        (settings.mode === 'blend' ? settings.voiceBlend : settings.voice);
+      const targetKey =
+        typeof target === 'string'
+          ? target
+          : target.map((v) => `${v.voice}:${v.weight}`).join(',');
+
+      setPreviewVoiceId(targetKey);
+
+      const url = await previewTtsVoice(
+        target,
+        settings.langCode,
+        settings.speed,
+        'Hello! This is Kokoro Text to Speech preview.',
+      );
+
+      if (previewAudioRef.current) {
+        previewAudioRef.current.pause();
+      }
+
+      const audio = new Audio(url);
+      previewAudioRef.current = audio;
+
+      audio.onplay = () => setIsPlayingPreview(true);
+      audio.onended = () => {
+        setIsPlayingPreview(false);
+        setPreviewVoiceId(null);
+      };
+      audio.onpause = () => setIsPlayingPreview(false);
+
+      await audio.play();
+    } catch (err) {
+      console.error('Failed to preview voice:', err);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  // Multi-voice blend helpers
+  const handleAddBlendVoice = (voiceId: string) => {
+    const exists = settings.voiceBlend.some((b) => b.voice === voiceId);
+    if (exists) return;
+    const newBlend: VoiceBlendItem[] = [
+      ...settings.voiceBlend,
+      { voice: voiceId, weight: 50 },
+    ];
+    onSettingsChange({ voiceBlend: newBlend });
+  };
+
+  const handleRemoveBlendVoice = (index: number) => {
+    const newBlend = settings.voiceBlend.filter((_, i) => i !== index);
+    onSettingsChange({ voiceBlend: newBlend });
+  };
+
+  const handleUpdateBlendWeight = (index: number, weight: number) => {
+    const newBlend = [...settings.voiceBlend];
+    newBlend[index] = { ...newBlend[index], weight };
+    onSettingsChange({ voiceBlend: newBlend });
+  };
+
+  // Filtered voice list for the library modal
+  const filteredVoices = KOKORO_VOICES.filter((v) => {
+    const matchesSearch =
+      v.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      v.lang.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      v.id.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesGender = genderFilter === 'All' || v.gender === genderFilter;
+    return matchesSearch && matchesGender;
+  });
+
+  const totalBlendWeight = settings.voiceBlend.reduce((sum, v) => sum + (v.weight || 0), 0) || 1;
 
   return (
     <div className="tts-panel">
@@ -193,83 +309,236 @@ export function TtsPanel({
         </div>
       </div>
 
-      {/* Voice Selection */}
+      {/* Voice Selection Section */}
       <div className="setting-group">
-        <label htmlFor="voice-select" className="setting-label">
-          <Volume2 size={14} className="inline-icon" /> Kokoro Voice
-        </label>
-        <select
-          id="voice-select"
-          className="setting-select"
-          value={settings.voice}
-          onChange={(e) => handleVoiceChange(e.target.value)}
-          disabled={disabled}
-        >
-          {/* Group voices by language/country */}
-          <optgroup label="🇺🇸 American English">
-            {KOKORO_VOICES.filter((v) => v.langCode === 'a').map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.flag} {v.name} ({v.gender})
-              </option>
-            ))}
-          </optgroup>
-          <optgroup label="🇬🇧 British English">
-            {KOKORO_VOICES.filter((v) => v.langCode === 'b').map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.flag} {v.name} ({v.gender})
-              </option>
-            ))}
-          </optgroup>
-          <optgroup label="🇪🇸 Spanish">
-            {KOKORO_VOICES.filter((v) => v.langCode === 'e').map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.flag} {v.name} ({v.gender})
-              </option>
-            ))}
-          </optgroup>
-          <optgroup label="🇫🇷 French">
-            {KOKORO_VOICES.filter((v) => v.langCode === 'f').map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.flag} {v.name} ({v.gender})
-              </option>
-            ))}
-          </optgroup>
-          <optgroup label="🇮🇳 Hindi">
-            {KOKORO_VOICES.filter((v) => v.langCode === 'h').map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.flag} {v.name} ({v.gender})
-              </option>
-            ))}
-          </optgroup>
-          <optgroup label="🇮🇹 Italian">
-            {KOKORO_VOICES.filter((v) => v.langCode === 'i').map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.flag} {v.name} ({v.gender})
-              </option>
-            ))}
-          </optgroup>
-          <optgroup label="🇧🇷 Portuguese">
-            {KOKORO_VOICES.filter((v) => v.langCode === 'p').map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.flag} {v.name} ({v.gender})
-              </option>
-            ))}
-          </optgroup>
-          <optgroup label="🇯🇵 Japanese">
-            {KOKORO_VOICES.filter((v) => v.langCode === 'j').map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.flag} {v.name} ({v.gender})
-              </option>
-            ))}
-          </optgroup>
-          <optgroup label="🇨🇳 Mandarin Chinese">
-            {KOKORO_VOICES.filter((v) => v.langCode === 'z').map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.flag} {v.name} ({v.gender})
-              </option>
-            ))}
-          </optgroup>
-        </select>
+        <div className="voice-mode-header">
+          <label className="setting-label">
+            <Volume2 size={14} className="inline-icon" /> Kokoro Voice Selection
+          </label>
+
+          {/* Voice Mode Toggle: Single vs Multi-Voice Blend */}
+          <div className="voice-mode-toggle">
+            <button
+              type="button"
+              className={`voice-mode-btn ${settings.mode === 'single' ? 'active' : ''}`}
+              onClick={() => onSettingsChange({ mode: 'single' })}
+              disabled={disabled}
+            >
+              <User size={13} />
+              Single
+            </button>
+            <button
+              type="button"
+              className={`voice-mode-btn ${settings.mode === 'blend' ? 'active' : ''}`}
+              onClick={() => {
+                if (settings.voiceBlend.length === 0) {
+                  onSettingsChange({
+                    mode: 'blend',
+                    voiceBlend: [
+                      { voice: settings.voice || 'af_heart', weight: 60 },
+                      { voice: 'am_adam', weight: 40 },
+                    ],
+                  });
+                } else {
+                  onSettingsChange({ mode: 'blend' });
+                }
+              }}
+              disabled={disabled}
+            >
+              <Layers size={13} />
+              Multi Blend
+            </button>
+          </div>
+        </div>
+
+        {/* SINGLE VOICE SELECTION */}
+        {settings.mode === 'single' ? (
+          <div className="single-voice-controls">
+            <div className="voice-picker-row">
+              <select
+                id="voice-select"
+                className="setting-select"
+                value={settings.voice}
+                onChange={(e) => handleVoiceChange(e.target.value)}
+                disabled={disabled}
+              >
+                <optgroup label="🇺🇸 American English">
+                  {KOKORO_VOICES.filter((v) => v.langCode === 'a').map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.flag} {v.name} ({v.gender})
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="🇬🇧 British English">
+                  {KOKORO_VOICES.filter((v) => v.langCode === 'b').map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.flag} {v.name} ({v.gender})
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="🇪🇸 Spanish">
+                  {KOKORO_VOICES.filter((v) => v.langCode === 'e').map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.flag} {v.name} ({v.gender})
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="🇫🇷 French">
+                  {KOKORO_VOICES.filter((v) => v.langCode === 'f').map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.flag} {v.name} ({v.gender})
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="🇮🇳 Hindi">
+                  {KOKORO_VOICES.filter((v) => v.langCode === 'h').map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.flag} {v.name} ({v.gender})
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="🇮🇹 Italian">
+                  {KOKORO_VOICES.filter((v) => v.langCode === 'i').map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.flag} {v.name} ({v.gender})
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="🇧🇷 Portuguese">
+                  {KOKORO_VOICES.filter((v) => v.langCode === 'p').map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.flag} {v.name} ({v.gender})
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="🇯🇵 Japanese">
+                  {KOKORO_VOICES.filter((v) => v.langCode === 'j').map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.flag} {v.name} ({v.gender})
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="🇨🇳 Mandarin Chinese">
+                  {KOKORO_VOICES.filter((v) => v.langCode === 'z').map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.flag} {v.name} ({v.gender})
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+
+              {/* Preview Button for Single Voice */}
+              <button
+                type="button"
+                id="voice-preview-btn"
+                className={`voice-preview-btn ${previewVoiceId === settings.voice && isPlayingPreview ? 'playing' : ''}`}
+                onClick={() => handlePlayPreview(settings.voice)}
+                disabled={disabled || previewLoading}
+                title="Listen to sample audio of this voice"
+              >
+                {previewLoading && previewVoiceId === settings.voice ? (
+                  <Loader2 size={14} className="spin" />
+                ) : isPlayingPreview && previewVoiceId === settings.voice ? (
+                  <Pause size={14} />
+                ) : (
+                  <Play size={14} />
+                )}
+                <span>Preview</span>
+              </button>
+            </div>
+
+            {/* Quick Browse Library Modal Button */}
+            <button
+              type="button"
+              className="voice-library-link"
+              onClick={() => setShowVoiceLibrary(true)}
+            >
+              <Search size={13} />
+              Browse & Audition Voice Library ({KOKORO_VOICES.length} voices)
+            </button>
+          </div>
+        ) : (
+          /* MULTI-VOICE BLEND SELECTION */
+          <div className="blend-voice-controls">
+            <div className="blend-help-banner">
+              <Layers size={14} />
+              <span>Mix multiple Kokoro voices to create a unique custom voice identity.</span>
+            </div>
+
+            <div className="blend-list">
+              {settings.voiceBlend.map((item, idx) => {
+                const voiceObj = KOKORO_VOICES.find((v) => v.id === item.voice);
+                const pct = Math.round((item.weight / totalBlendWeight) * 100);
+
+                return (
+                  <div key={item.voice + idx} className="blend-item-card">
+                    <div className="blend-item-header">
+                      <div className="blend-item-name">
+                        <span className="blend-flag">{voiceObj?.flag || '🎙'}</span>
+                        <span className="blend-title">{voiceObj?.name || item.voice}</span>
+                        <span className="blend-gender">{voiceObj?.gender}</span>
+                      </div>
+                      <div className="blend-item-actions">
+                        <span className="blend-pct-badge">{pct}%</span>
+                        <button
+                          type="button"
+                          className="blend-remove-btn"
+                          onClick={() => handleRemoveBlendVoice(idx)}
+                          disabled={settings.voiceBlend.length <= 1}
+                          title="Remove voice from blend"
+                        >
+                          <X size={13} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="blend-slider-wrap">
+                      <input
+                        type="range"
+                        min="5"
+                        max="100"
+                        step="5"
+                        value={item.weight}
+                        onChange={(e) => handleUpdateBlendWeight(idx, parseFloat(e.target.value))}
+                        className="setting-range blend-slider"
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Blend Actions */}
+            <div className="blend-actions-row">
+              <button
+                type="button"
+                className="blend-add-btn"
+                onClick={() => setShowVoiceLibrary(true)}
+                disabled={disabled}
+              >
+                <Plus size={14} />
+                Add Voice to Mix
+              </button>
+
+              <button
+                type="button"
+                id="blend-preview-btn"
+                className={`voice-preview-btn ${isPlayingPreview ? 'playing' : ''}`}
+                onClick={() => handlePlayPreview(settings.voiceBlend)}
+                disabled={disabled || previewLoading || settings.voiceBlend.length === 0}
+              >
+                {previewLoading ? (
+                  <Loader2 size={14} className="spin" />
+                ) : isPlayingPreview ? (
+                  <Pause size={14} />
+                ) : (
+                  <Play size={14} />
+                )}
+                <span>Preview Mix</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Speed Slider */}
@@ -364,6 +633,150 @@ export function TtsPanel({
               <span>0.2s (tight)</span>
               <span>2.0s (loose)</span>
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* VOICE LIBRARY MODAL / DRAWER */}
+      {showVoiceLibrary && (
+        <div className="voice-modal-overlay" onClick={() => setShowVoiceLibrary(false)}>
+          <div className="voice-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="voice-modal-header">
+              <div>
+                <h3 className="voice-modal-title">Kokoro Voice Library</h3>
+                <p className="voice-modal-sub">
+                  Audition voices and select or add to your multi-voice mix.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="voice-modal-close"
+                onClick={() => setShowVoiceLibrary(false)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Filter Bar */}
+            <div className="voice-filter-bar">
+              <div className="voice-search-wrap">
+                <Search size={14} className="search-icon" />
+                <input
+                  type="text"
+                  placeholder="Search voices by name or language…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="voice-search-input"
+                />
+              </div>
+
+              <div className="voice-gender-filter">
+                {(['All', 'Female', 'Male'] as const).map((g) => (
+                  <button
+                    key={g}
+                    type="button"
+                    className={`gender-filter-btn ${genderFilter === g ? 'active' : ''}`}
+                    onClick={() => setGenderFilter(g)}
+                  >
+                    {g}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Voice Cards Grid */}
+            <div className="voice-grid">
+              {filteredVoices.map((v) => {
+                const isSelectedSingle = settings.mode === 'single' && settings.voice === v.id;
+                const isSelectedBlend = settings.mode === 'blend' && settings.voiceBlend.some((b) => b.voice === v.id);
+                const isCurrentPlaying = previewVoiceId === v.id && isPlayingPreview;
+
+                return (
+                  <div
+                    key={v.id}
+                    className={`voice-card ${isSelectedSingle || isSelectedBlend ? 'selected' : ''}`}
+                  >
+                    <div className="voice-card-top">
+                      <span className="voice-card-flag">{v.flag}</span>
+                      <div className="voice-card-info">
+                        <span className="voice-card-name">{v.name}</span>
+                        <span className="voice-card-meta">{v.lang} · {v.gender}</span>
+                      </div>
+                    </div>
+
+                    <div className="voice-card-actions">
+                      <button
+                        type="button"
+                        className={`voice-card-preview-btn ${isCurrentPlaying ? 'playing' : ''}`}
+                        onClick={() => handlePlayPreview(v.id)}
+                        disabled={previewLoading}
+                        title="Listen to sample"
+                      >
+                        {previewLoading && previewVoiceId === v.id ? (
+                          <Loader2 size={13} className="spin" />
+                        ) : isCurrentPlaying ? (
+                          <Pause size={13} />
+                        ) : (
+                          <Play size={13} />
+                        )}
+                        <span>{isCurrentPlaying ? 'Playing' : 'Listen'}</span>
+                      </button>
+
+                      {settings.mode === 'single' ? (
+                        <button
+                          type="button"
+                          className={`voice-card-select-btn ${isSelectedSingle ? 'active' : ''}`}
+                          onClick={() => {
+                            handleVoiceChange(v.id);
+                            setShowVoiceLibrary(false);
+                          }}
+                        >
+                          {isSelectedSingle ? (
+                            <>
+                              <Check size={13} /> Selected
+                            </>
+                          ) : (
+                            'Select'
+                          )}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className={`voice-card-select-btn ${isSelectedBlend ? 'active' : ''}`}
+                          onClick={() => {
+                            if (!isSelectedBlend) {
+                              handleAddBlendVoice(v.id);
+                            }
+                          }}
+                          disabled={isSelectedBlend}
+                        >
+                          {isSelectedBlend ? (
+                            <>
+                              <Check size={13} /> In Mix
+                            </>
+                          ) : (
+                            <>
+                              <Plus size={13} /> Add to Mix
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="voice-modal-footer">
+              <span>{filteredVoices.length} voices found</span>
+              <button
+                type="button"
+                className="voice-modal-done-btn"
+                onClick={() => setShowVoiceLibrary(false)}
+              >
+                Done
+              </button>
+            </div>
           </div>
         </div>
       )}

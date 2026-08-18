@@ -1,4 +1,4 @@
-import { ProgressEvent, TranscriptResult, Segment, TranscribeSettings, TtsSettings } from './types';
+import { ProgressEvent, TranscriptResult, Segment, TranscribeSettings, TtsSettings, VoiceBlendItem } from './types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:8000';
 
@@ -35,6 +35,11 @@ export async function submitTTS(
   script: string,
   settings: TtsSettings,
 ): Promise<string> {
+  const voicePayload =
+    settings.mode === 'blend' && settings.voiceBlend.length > 0
+      ? settings.voiceBlend
+      : settings.voice;
+
   const res = await fetch(`${API_BASE}/api/tts`, {
     method: 'POST',
     headers: {
@@ -42,7 +47,7 @@ export async function submitTTS(
     },
     body: JSON.stringify({
       script,
-      voice: settings.voice,
+      voice: voicePayload,
       lang_code: settings.langCode,
       speed: settings.speed,
       model: settings.model,
@@ -58,6 +63,34 @@ export async function submitTTS(
 
   const { job_id } = await res.json();
   return job_id;
+}
+
+export async function previewTtsVoice(
+  voice: string | VoiceBlendItem[],
+  langCode: string,
+  speed = 1.0,
+  text?: string,
+): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/tts/preview`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      voice,
+      lang_code: langCode,
+      speed,
+      text,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail ?? 'Preview failed');
+  }
+
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
 }
 
 export function subscribeProgress(
