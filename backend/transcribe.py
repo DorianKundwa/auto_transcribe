@@ -182,12 +182,17 @@ async def run_transcription(
     if language and language != "auto":
         transcribe_kwargs["language"] = language
 
-    result = await asyncio.to_thread(
-        model.transcribe,
-        audio,
-        batch_size=16,
-        **transcribe_kwargs,
-    )
+    import torch
+
+    def _do_transcribe():
+        with torch.inference_mode():
+            return model.transcribe(
+                audio,
+                batch_size=32,
+                **transcribe_kwargs,
+            )
+
+    result = await asyncio.to_thread(_do_transcribe)
     detected_language: str = result.get("language", language or "en")
     emit("transcribing", 50)
 
@@ -207,15 +212,18 @@ async def run_transcription(
         align_model, metadata = _align_cache[align_key]
 
     emit("aligning", 60)
-    aligned = await asyncio.to_thread(
-        whisperx.align,
-        result["segments"],
-        align_model,
-        metadata,
-        audio,
-        device,
-        return_char_alignments=False,
-    )
+    def _do_align():
+        with torch.inference_mode():
+            return whisperx.align(
+                result["segments"],
+                align_model,
+                metadata,
+                audio,
+                device,
+                return_char_alignments=False,
+            )
+
+    aligned = await asyncio.to_thread(_do_align)
     emit("aligning", 80)
 
     # ------------------------------------------------------------------ #

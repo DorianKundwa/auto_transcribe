@@ -140,8 +140,10 @@ def _synthesize(
 
     chunks: list[Any] = []
     try:
-        for _gs, _ps, audio in pipeline(script, voice=resolved_voice, speed=speed):
-            chunks.append(audio)
+        import torch
+        with torch.inference_mode():
+            for _gs, _ps, audio in pipeline(script, voice=resolved_voice, speed=speed):
+                chunks.append(audio)
     except Exception as exc:
         err_str = str(exc).lower()
         if "espeak" in err_str or "phonemizer" in err_str:
@@ -192,8 +194,10 @@ def synthesize_preview(
 
     chunks: list[Any] = []
     try:
-        for _gs, _ps, audio in pipeline(sample_text, voice=resolved_voice, speed=speed):
-            chunks.append(audio)
+        import torch
+        with torch.inference_mode():
+            for _gs, _ps, audio in pipeline(sample_text, voice=resolved_voice, speed=speed):
+                chunks.append(audio)
     except Exception as exc:
         err_str = str(exc).lower()
         if "espeak" in err_str or "phonemizer" in err_str:

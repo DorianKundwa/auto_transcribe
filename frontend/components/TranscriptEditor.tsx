@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, memo } from 'react';
 import { Segment } from '@/lib/types';
 import { formatTimestamp, parseTimestamp } from '@/lib/formatters';
 import { useUndoRedo } from '@/hooks/useUndoRedo';
@@ -8,6 +8,144 @@ import {
   Undo2, Redo2, Plus, Trash2, Merge, Scissors,
   Check, X, Edit3,
 } from 'lucide-react';
+
+interface TranscriptLineProps {
+  seg: Segment;
+  idx: number;
+  isActive: boolean;
+  isEditing: boolean;
+  onSeek: (time: number) => void;
+  onStartEdit: (seg: Segment) => void;
+  onSaveEdit: (segId: string, newText: string, newStartTs: string) => void;
+  onCancelEdit: () => void;
+  onDeleteSeg: (id: string) => void;
+  onAddAfter: (id: string) => void;
+  onMergeWithPrev: (id: string) => void;
+  onSplit: (seg: Segment, before: string, after: string) => void;
+}
+
+const TranscriptLine = memo(function TranscriptLine({
+  seg,
+  idx,
+  isActive,
+  isEditing,
+  onSeek,
+  onStartEdit,
+  onSaveEdit,
+  onCancelEdit,
+  onDeleteSeg,
+  onAddAfter,
+  onMergeWithPrev,
+  onSplit,
+}: TranscriptLineProps) {
+  const [editText, setEditText] = useState(seg.text);
+  const [editTs, setEditTs] = useState(formatTimestamp(seg.start).replace(/[\[\]]/g, ''));
+  const splitRef = useRef<HTMLTextAreaElement | null>(null);
+  const activeRef = useRef<HTMLDivElement | null>(null);
+
+  // Sync state when entering edit mode
+  useEffect(() => {
+    if (isEditing) {
+      setEditText(seg.text);
+      setEditTs(formatTimestamp(seg.start).replace(/[\[\]]/g, ''));
+    }
+  }, [isEditing, seg]);
+
+  // Scroll into view when active
+  useEffect(() => {
+    if (isActive) {
+      activeRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, [isActive]);
+
+  const handleSplit = () => {
+    if (!splitRef.current) return;
+    const pos = splitRef.current.selectionStart;
+    const before = editText.slice(0, pos).trim();
+    const after = editText.slice(pos).trim();
+    if (!before || !after) return;
+    onSplit(seg, before, after);
+  };
+
+  return (
+    <div
+      ref={activeRef}
+      className={`transcript-line ${isActive ? 'active' : ''} ${isEditing ? 'editing' : ''}`}
+      role="listitem"
+    >
+      {isEditing ? (
+        <div className="edit-mode">
+          <input
+            className="edit-ts-input"
+            value={editTs}
+            onChange={(e) => setEditTs(e.target.value)}
+            placeholder="0:00"
+            aria-label="Timestamp"
+          />
+          <textarea
+            ref={splitRef}
+            className="edit-text-input"
+            value={editText}
+            onChange={(e) => setEditText(e.target.value)}
+            rows={2}
+            autoFocus
+            aria-label="Transcript text"
+          />
+          <div className="edit-actions">
+            <button
+              className="edit-action-btn split"
+              onClick={handleSplit}
+              title="Split at cursor"
+            >
+              <Scissors size={13} /> Split here
+            </button>
+            {idx > 0 && (
+              <button
+                className="edit-action-btn merge"
+                onClick={() => onMergeWithPrev(seg.id)}
+                title="Merge with line above"
+              >
+                <Merge size={13} /> Merge up
+              </button>
+            )}
+            <button className="edit-action-btn delete" onClick={() => onDeleteSeg(seg.id)} title="Delete line">
+              <Trash2 size={13} /> Delete
+            </button>
+            <button className="edit-action-btn add" onClick={() => onAddAfter(seg.id)} title="Add line below">
+              <Plus size={13} /> Add below
+            </button>
+            <div className="edit-confirm-btns">
+              <button className="edit-confirm save" onClick={() => onSaveEdit(seg.id, editText, editTs)} title="Save">
+                <Check size={14} />
+              </button>
+              <button className="edit-confirm cancel" onClick={onCancelEdit} title="Cancel">
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="view-mode" onClick={() => onSeek(seg.start)}>
+          <button
+            className="segment-ts"
+            onClick={(e) => { e.stopPropagation(); onSeek(seg.start); }}
+            aria-label={`Seek to ${formatTimestamp(seg.start)}`}
+          >
+            {formatTimestamp(seg.start)}
+          </button>
+          <span className="segment-text">{seg.text}</span>
+          <button
+            className="segment-edit-btn"
+            onClick={(e) => { e.stopPropagation(); onStartEdit(seg); }}
+            aria-label="Edit line"
+          >
+            <Edit3 size={13} />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+});
 
 interface TranscriptEditorProps {
   segments: Segment[];
@@ -23,11 +161,8 @@ export function TranscriptEditor({
   onSeek,
 }: TranscriptEditorProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editText, setEditText] = useState('');
-  const [editTs, setEditTs] = useState('');
   const [activeId, setActiveId] = useState<string | null>(null);
   const undoRedo = useUndoRedo();
-  const activeRef = useRef<HTMLDivElement | null>(null);
 
   // Initialise undo history on first load
   const initialised = useRef(false);
@@ -60,50 +195,45 @@ export function TranscriptEditor({
     }
   }, [currentTime, segments]);
 
-  // Scroll active line into view
-  useEffect(() => {
-    activeRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }, [activeId]);
-
   const commit = useCallback((newSegs: Segment[]) => {
     undoRedo.push(newSegs);
     onChange(newSegs);
   }, [undoRedo, onChange]);
 
-  const handleUndo = () => {
+  const handleUndo = useCallback(() => {
     const prev = undoRedo.undo();
     if (prev) onChange(prev);
-  };
-  const handleRedo = () => {
+  }, [undoRedo, onChange]);
+
+  const handleRedo = useCallback(() => {
     const next = undoRedo.redo();
     if (next) onChange(next);
-  };
+  }, [undoRedo, onChange]);
 
-  // Start editing a segment
-  const startEdit = (seg: Segment) => {
+  const handleStartEdit = useCallback((seg: Segment) => {
     setEditingId(seg.id);
-    setEditText(seg.text);
-    setEditTs(formatTimestamp(seg.start).replace(/[\[\]]/g, ''));
-  };
+  }, []);
 
-  const saveEdit = (seg: Segment) => {
-    const newStart = parseTimestamp(`[${editTs}]`);
+  const handleSaveEdit = useCallback((segId: string, newText: string, newStartTs: string) => {
+    const newStart = parseTimestamp(`[${newStartTs}]`);
     const newSegs = segments.map((s) =>
-      s.id === seg.id
-        ? { ...s, text: editText, start: newStart }
-        : s,
+      s.id === segId
+        ? { ...s, text: newText, start: newStart }
+        : s
     );
     commit(newSegs);
     setEditingId(null);
-  };
+  }, [segments, commit]);
 
-  const cancelEdit = () => setEditingId(null);
+  const handleCancelEdit = useCallback(() => {
+    setEditingId(null);
+  }, []);
 
-  const deleteSeg = (id: string) => {
+  const handleDeleteSeg = useCallback((id: string) => {
     commit(segments.filter((s) => s.id !== id));
-  };
+  }, [segments, commit]);
 
-  const addAfter = (id: string) => {
+  const handleAddAfter = useCallback((id: string) => {
     const idx = segments.findIndex((s) => s.id === id);
     const ref = segments[idx];
     const newSeg: Segment = {
@@ -116,17 +246,14 @@ export function TranscriptEditor({
     const newSegs = [...segments];
     newSegs.splice(idx + 1, 0, newSeg);
     commit(newSegs);
-    // Immediately open edit mode for new segment
     setTimeout(() => {
       setEditingId(newSeg.id);
-      setEditText('');
-      setEditTs(formatTimestamp(newSeg.start).replace(/[\[\]]/g, ''));
     }, 10);
-  };
+  }, [segments, commit]);
 
-  const mergeWithPrev = (id: string) => {
+  const handleMergeWithPrev = useCallback((id: string) => {
     const idx = segments.findIndex((s) => s.id === id);
-    if (idx === 0) return;
+    if (idx <= 0) return;
     const prev = segments[idx - 1];
     const curr = segments[idx];
     const merged: Segment = {
@@ -138,23 +265,18 @@ export function TranscriptEditor({
     const newSegs = [...segments];
     newSegs.splice(idx - 1, 2, merged);
     commit(newSegs);
-  };
+  }, [segments, commit]);
 
-  const splitAtCursor = (seg: Segment, textareEl: HTMLTextAreaElement) => {
-    const pos = textareEl.selectionStart;
-    const before = seg.text.slice(0, pos).trim();
-    const after = seg.text.slice(pos).trim();
-    if (!before || !after) return;
-
-    // Estimate split time from word timestamps
+  const handleSplit = useCallback((seg: Segment, before: string, after: string) => {
     const wordCount = before.split(/\s+/).length;
     const totalWords = seg.words.length;
     let splitTime = seg.start;
+    
     if (totalWords > 0 && wordCount > 0) {
       const splitIdx = Math.min(wordCount - 1, totalWords - 1);
       splitTime = seg.words[splitIdx]?.end ?? seg.start;
     } else {
-      const ratio = wordCount / (seg.text.split(/\s+/).length || 1);
+      const ratio = wordCount / ((before + ' ' + after).split(/\s+/).length || 1);
       splitTime = seg.start + (seg.end - seg.start) * ratio;
     }
 
@@ -171,9 +293,11 @@ export function TranscriptEditor({
     newSegs.splice(idx + 1, 0, segB);
     commit(newSegs);
     setEditingId(null);
-  };
+  }, [segments, commit]);
 
-  const splitRef = useRef<HTMLTextAreaElement | null>(null);
+  const handleSeek = useCallback((time: number) => {
+    onSeek(time);
+  }, [onSeek]);
 
   return (
     <div className="transcript-editor">
@@ -205,7 +329,7 @@ export function TranscriptEditor({
         <div className="toolbar-group">
           <button
             className="toolbar-btn"
-            onClick={() => addAfter(segments[segments.length - 1]?.id ?? '')}
+            onClick={() => handleAddAfter(segments[segments.length - 1]?.id ?? '')}
             title="Add line at end"
           >
             <Plus size={15} />
@@ -226,91 +350,25 @@ export function TranscriptEditor({
           </div>
         )}
 
-        {segments.map((seg, idx) => {
-          const isActive = seg.id === activeId;
-          const isEditing = seg.id === editingId;
-
-          return (
-            <div
-              key={seg.id}
-              ref={isActive ? (el) => { activeRef.current = el; } : undefined}
-              className={`transcript-line ${isActive ? 'active' : ''} ${isEditing ? 'editing' : ''}`}
-              role="listitem"
-            >
-              {isEditing ? (
-                <div className="edit-mode">
-                  <input
-                    className="edit-ts-input"
-                    value={editTs}
-                    onChange={(e) => setEditTs(e.target.value)}
-                    placeholder="0:00"
-                    aria-label="Timestamp"
-                  />
-                  <textarea
-                    ref={splitRef}
-                    className="edit-text-input"
-                    value={editText}
-                    onChange={(e) => setEditText(e.target.value)}
-                    rows={2}
-                    autoFocus
-                    aria-label="Transcript text"
-                  />
-                  <div className="edit-actions">
-                    <button
-                      className="edit-action-btn split"
-                      onClick={() => splitRef.current && splitAtCursor(seg, splitRef.current)}
-                      title="Split at cursor"
-                    >
-                      <Scissors size={13} /> Split here
-                    </button>
-                    {idx > 0 && (
-                      <button
-                        className="edit-action-btn merge"
-                        onClick={() => mergeWithPrev(seg.id)}
-                        title="Merge with line above"
-                      >
-                        <Merge size={13} /> Merge up
-                      </button>
-                    )}
-                    <button className="edit-action-btn delete" onClick={() => deleteSeg(seg.id)} title="Delete line">
-                      <Trash2 size={13} /> Delete
-                    </button>
-                    <button className="edit-action-btn add" onClick={() => addAfter(seg.id)} title="Add line below">
-                      <Plus size={13} /> Add below
-                    </button>
-                    <div className="edit-confirm-btns">
-                      <button className="edit-confirm save" onClick={() => saveEdit(seg)} title="Save">
-                        <Check size={14} />
-                      </button>
-                      <button className="edit-confirm cancel" onClick={cancelEdit} title="Cancel">
-                        <X size={14} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="view-mode" onClick={() => { onSeek(seg.start); }}>
-                  <button
-                    className="segment-ts"
-                    onClick={(e) => { e.stopPropagation(); onSeek(seg.start); }}
-                    aria-label={`Seek to ${formatTimestamp(seg.start)}`}
-                  >
-                    {formatTimestamp(seg.start)}
-                  </button>
-                  <span className="segment-text">{seg.text}</span>
-                  <button
-                    className="segment-edit-btn"
-                    onClick={(e) => { e.stopPropagation(); startEdit(seg); }}
-                    aria-label="Edit line"
-                  >
-                    <Edit3 size={13} />
-                  </button>
-                </div>
-              )}
-            </div>
-          );
-        })}
+        {segments.map((seg, idx) => (
+          <TranscriptLine
+            key={seg.id}
+            seg={seg}
+            idx={idx}
+            isActive={seg.id === activeId}
+            isEditing={seg.id === editingId}
+            onSeek={handleSeek}
+            onStartEdit={handleStartEdit}
+            onSaveEdit={handleSaveEdit}
+            onCancelEdit={handleCancelEdit}
+            onDeleteSeg={handleDeleteSeg}
+            onAddAfter={handleAddAfter}
+            onMergeWithPrev={handleMergeWithPrev}
+            onSplit={handleSplit}
+          />
+        ))}
       </div>
     </div>
   );
 }
+

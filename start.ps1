@@ -1,5 +1,10 @@
+[CmdletBinding()]
+param (
+    [switch]$Prod
+)
+
 # AutoTranscribe Launcher
-# Usage: .\start.ps1
+# Usage: .\start.ps1 [-Prod]
 # Opens two terminal windows: one for the backend, one for the frontend.
 
 $Root = $PSScriptRoot
@@ -86,15 +91,24 @@ if (-not (Test-Path (Join-Path $FrontendDir "node_modules"))) {
 
 Write-Step "Starting backend  →  http://localhost:8000"
 
-$backendCmd = "title AutoTranscribe Backend && cd /d `"$Root`" && `"$VenvPython`" -m uvicorn backend.main:app --reload --port 8000"
-Start-Process cmd.exe -ArgumentList "/k", "`"$backendCmd`""
+$backendCmd = "title AutoTranscribe Backend && cd /d ""$Root"" && ""$VenvPython"" -m uvicorn backend.main:app --reload --port 8000"
+Start-Process cmd.exe -ArgumentList "/k $backendCmd"
 
 # ── 5. Launch frontend in a new window ──────────────────────────────────────
 
-Write-Step "Starting frontend  →  http://localhost:3000"
+if ($Prod) {
+    Write-Step "Building frontend for production..."
+    $buildCmd = "title AutoTranscribe Frontend Build && cd /d ""$FrontendDir"" && npm run build"
+    Start-Process cmd.exe -ArgumentList "/c $buildCmd" -Wait
+    
+    Write-Step "Starting frontend (Production) →  http://localhost:3000"
+    $frontendCmd = "title AutoTranscribe Frontend && cd /d ""$FrontendDir"" && npm start"
+} else {
+    Write-Step "Starting frontend (Dev) →  http://localhost:3000"
+    $frontendCmd = "title AutoTranscribe Frontend && cd /d ""$FrontendDir"" && npm run dev"
+}
 
-$frontendCmd = "title AutoTranscribe Frontend && cd /d `"$FrontendDir`" && npm run dev"
-Start-Process cmd.exe -ArgumentList "/k", "`"$frontendCmd`""
+Start-Process cmd.exe -ArgumentList "/k $frontendCmd"
 
 # ── 6. Done ──────────────────────────────────────────────────────────────────
 
