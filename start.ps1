@@ -87,37 +87,51 @@ if (-not (Test-Path (Join-Path $FrontendDir "node_modules"))) {
     Write-Host ""
 }
 
-# ── 4. Launch backend in a new window ───────────────────────────────────────
+# ── 4. Get Open Ports ────────────────────────────────────────────────────────
+Write-Step "Finding open ports..."
+function Get-FreePort {
+    $tcp = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+    $tcp.Start()
+    $port = $tcp.LocalEndpoint.Port
+    $tcp.Stop()
+    return $port
+}
+$BackendPort = Get-FreePort
+$FrontendPort = Get-FreePort
+$env:NEXT_PUBLIC_API_BASE = "http://localhost:$BackendPort"
+$env:PORT = $FrontendPort
 
-Write-Step "Starting backend  →  http://localhost:8000"
+# ── 5. Launch backend in a new window ───────────────────────────────────────
 
-$backendCmd = "title AutoTranscribe Backend && cd /d ""$Root"" && ""$VenvPython"" -m uvicorn backend.main:app --reload --port 8000"
+Write-Step "Starting backend  →  http://localhost:$BackendPort"
+
+$backendCmd = "title AutoTranscribe Backend && cd /d ""$Root"" && ""$VenvPython"" -m uvicorn backend.main:app --reload --port $BackendPort"
 Start-Process cmd.exe -ArgumentList "/k $backendCmd"
 
-# ── 5. Launch frontend in a new window ──────────────────────────────────────
+# ── 6. Launch frontend in a new window ──────────────────────────────────────
 
 if ($Prod) {
     Write-Step "Building frontend for production..."
-    $buildCmd = "title AutoTranscribe Frontend Build && cd /d ""$FrontendDir"" && npm run build"
+    $buildCmd = "title AutoTranscribe Frontend Build && cd /d ""$FrontendDir"" && set NEXT_PUBLIC_API_BASE=$env:NEXT_PUBLIC_API_BASE&& npm run build"
     Start-Process cmd.exe -ArgumentList "/c $buildCmd" -Wait
     
-    Write-Step "Starting frontend (Production) →  http://localhost:3000"
-    $frontendCmd = "title AutoTranscribe Frontend && cd /d ""$FrontendDir"" && npm start"
+    Write-Step "Starting frontend (Production) →  http://localhost:$FrontendPort"
+    $frontendCmd = "title AutoTranscribe Frontend && cd /d ""$FrontendDir"" && set PORT=$FrontendPort&& set NEXT_PUBLIC_API_BASE=$env:NEXT_PUBLIC_API_BASE&& npm start"
 } else {
-    Write-Step "Starting frontend (Dev) →  http://localhost:3000"
-    $frontendCmd = "title AutoTranscribe Frontend && cd /d ""$FrontendDir"" && npm run dev"
+    Write-Step "Starting frontend (Dev) →  http://localhost:$FrontendPort"
+    $frontendCmd = "title AutoTranscribe Frontend && cd /d ""$FrontendDir"" && set PORT=$FrontendPort&& set NEXT_PUBLIC_API_BASE=$env:NEXT_PUBLIC_API_BASE&& npm run dev"
 }
 
 Start-Process cmd.exe -ArgumentList "/k $frontendCmd"
 
-# ── 6. Done ──────────────────────────────────────────────────────────────────
+# ── 7. Done ──────────────────────────────────────────────────────────────────
 
 Write-Host ""
 Write-Ok "Both servers are launching in separate windows."
 Write-Host ""
-Write-Host "  Frontend  →  http://localhost:3000" -ForegroundColor White
-Write-Host "  Backend   →  http://localhost:8000" -ForegroundColor White
-Write-Host "  API docs  →  http://localhost:8000/docs" -ForegroundColor DarkGray
+Write-Host "  Frontend  →  http://localhost:$FrontendPort" -ForegroundColor White
+Write-Host "  Backend   →  http://localhost:$BackendPort" -ForegroundColor White
+Write-Host "  API docs  →  http://localhost:$BackendPort/docs" -ForegroundColor DarkGray
 Write-Host ""
 Write-Host "  Close the two terminal windows to stop the servers." -ForegroundColor DarkGray
 Write-Host ""

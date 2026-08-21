@@ -5,7 +5,7 @@ import { Segment } from '@/lib/types';
 import {
   toTxt, toSrt, toVtt, toJson, downloadFile,
 } from '@/lib/formatters';
-import { downloadWavFile } from '@/lib/api';
+import { downloadWavFile, downloadMp3File } from '@/lib/api';
 import { Copy, Download, ChevronDown, Check, Music } from 'lucide-react';
 
 interface ExportPanelProps {
@@ -28,6 +28,7 @@ export function ExportPanel({
   const [copied, setCopied] = useState(false);
   const [open, setOpen] = useState(false);
   const [downloadingWav, setDownloadingWav] = useState(false);
+  const [downloadingMp3, setDownloadingMp3] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const base = filename.replace(/\.[^.]+$/, '');
 
@@ -47,6 +48,18 @@ export function ExportPanel({
       console.error('Failed to download WAV', err);
     } finally {
       setDownloadingWav(false);
+    }
+  };
+
+  const handleDownloadMp3 = async () => {
+    if (!jobId) return;
+    try {
+      setDownloadingMp3(true);
+      await downloadMp3File(jobId, `${base || 'speech'}.mp3`);
+    } catch (err) {
+      console.error('Failed to download MP3', err);
+    } finally {
+      setDownloadingMp3(false);
     }
   };
 
@@ -82,14 +95,14 @@ export function ExportPanel({
     <div className="export-panel" ref={panelRef}>
       {hasWav && jobId && (
         <button
-          id="download-wav-btn"
+          id="download-mp3-btn"
           className="export-btn export-btn--wav"
-          onClick={handleDownloadWav}
-          disabled={downloadingWav}
-          title="Download generated 24kHz WAV audio"
+          onClick={handleDownloadMp3}
+          disabled={downloadingMp3}
+          title="Download generated MP3 audio"
         >
           <Music size={15} />
-          {downloadingWav ? 'Downloading…' : 'Download WAV'}
+          {downloadingMp3 ? 'Downloading…' : 'Download MP3'}
         </button>
       )}
 
@@ -111,26 +124,41 @@ export function ExportPanel({
           disabled={segments.length === 0}
         >
           <Download size={15} />
-          Export Timestamps
+          Export
           <ChevronDown size={13} className={`dropdown-chevron ${open ? 'open' : ''}`} />
         </button>
 
         {open && (
           <div className="export-menu" role="menu">
             {hasWav && jobId && (
-              <button
-                key="wav"
-                id="export-wav-menu-btn"
-                className="export-menu-item"
-                role="menuitem"
-                onClick={() => {
-                  handleDownloadWav();
-                  setOpen(false);
-                }}
-              >
-                Download Audio
-                <span className="export-ext">.wav</span>
-              </button>
+              <>
+                <button
+                  key="mp3"
+                  id="export-mp3-menu-btn"
+                  className="export-menu-item"
+                  role="menuitem"
+                  onClick={() => {
+                    handleDownloadMp3();
+                    setOpen(false);
+                  }}
+                >
+                  Download Audio
+                  <span className="export-ext">.mp3</span>
+                </button>
+                <button
+                  key="wav"
+                  id="export-wav-menu-btn"
+                  className="export-menu-item"
+                  role="menuitem"
+                  onClick={() => {
+                    handleDownloadWav();
+                    setOpen(false);
+                  }}
+                >
+                  Download Audio
+                  <span className="export-ext">.wav</span>
+                </button>
+              </>
             )}
 
             {exports.map((ex) => (

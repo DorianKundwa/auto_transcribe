@@ -393,6 +393,41 @@ async def download_wav(job_id: str):
 
 
 # ---------------------------------------------------------------------------
+# GET /api/download/mp3/{job_id}
+# ---------------------------------------------------------------------------
+@app.get("/api/download/mp3/{job_id}")
+async def download_mp3(job_id: str):
+    job = _jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    wav_path = job.get("wav_path")
+    if not wav_path or not os.path.exists(wav_path):
+        raise HTTPException(status_code=404, detail="WAV file not found or expired")
+
+    mp3_path = wav_path.replace(".wav", ".mp3")
+    if not os.path.exists(mp3_path):
+        import subprocess
+        # Convert WAV to MP3 using ffmpeg
+        try:
+            subprocess.run(
+                ["ffmpeg", "-y", "-i", wav_path, "-codec:a", "libmp3lame", "-qscale:a", "2", mp3_path],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        except Exception as e:
+            logger.exception("Failed to convert WAV to MP3")
+            raise HTTPException(status_code=500, detail="Failed to convert audio to MP3")
+            
+    return FileResponse(
+        path=mp3_path,
+        media_type="audio/mpeg",
+        filename=f"speech_{job_id[:8]}.mp3",
+    )
+
+
+# ---------------------------------------------------------------------------
 # DELETE /api/job/{job_id}
 # ---------------------------------------------------------------------------
 @app.delete("/api/job/{job_id}")
@@ -412,6 +447,9 @@ async def delete_job(job_id: str):
     if wav and os.path.exists(wav):
         try:
             os.remove(wav)
+            mp3 = wav.replace(".wav", ".mp3")
+            if os.path.exists(mp3):
+                os.remove(mp3)
         except OSError:
             pass
 

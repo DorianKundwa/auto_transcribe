@@ -161,6 +161,26 @@ export async function downloadWavFile(jobId: string, filename = 'speech.wav'): P
   URL.revokeObjectURL(url);
 }
 
+export function getMp3DownloadUrl(jobId: string): string {
+  return `${API_BASE}/api/download/mp3/${jobId}`;
+}
+
+export async function downloadMp3File(jobId: string, filename = 'speech.mp3'): Promise<void> {
+  const res = await fetch(getMp3DownloadUrl(jobId));
+  if (!res.ok) {
+    throw new Error('Failed to download MP3 file');
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 export async function deleteJob(jobId: string): Promise<void> {
   await fetch(`${API_BASE}/api/job/${jobId}`, { method: 'DELETE' });
 }

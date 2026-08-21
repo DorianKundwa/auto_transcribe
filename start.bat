@@ -50,18 +50,21 @@ if not exist "frontend\node_modules" (
     cd ..
 )
 
-echo.
-echo Starting Backend on http://localhost:8000 ...
-start "AutoTranscribe Backend" cmd /k "backend\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload --port 8000"
+for /f %%i in ('python -c "import socket; s=socket.socket(); s.bind(('', 0)); print(s.getsockname()[1]); s.close()"') do set BACKEND_PORT=%%i
+for /f %%i in ('python -c "import socket; s=socket.socket(); s.bind(('', 0)); print(s.getsockname()[1]); s.close()"') do set FRONTEND_PORT=%%i
 
-echo Starting Frontend on http://localhost:3000 ...
-start "AutoTranscribe Frontend" cmd /k "cd frontend && npm run dev"
+echo.
+echo Starting Backend on http://localhost:%BACKEND_PORT% ...
+start "AutoTranscribe Backend" cmd /k "backend\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload --port %BACKEND_PORT%"
+
+echo Starting Frontend on http://localhost:%FRONTEND_PORT% ...
+start "AutoTranscribe Frontend" cmd /k "cd frontend && set NEXT_PUBLIC_API_BASE=http://localhost:%BACKEND_PORT%&& set PORT=%FRONTEND_PORT%&& npm run dev"
 
 echo.
 echo ==============================================
 echo   AutoTranscribe is now running!
-echo   Frontend : http://localhost:3000
-echo   Backend  : http://localhost:8000
-echo   API Docs : http://localhost:8000/docs
+echo   Frontend : http://localhost:%FRONTEND_PORT%
+echo   Backend  : http://localhost:%BACKEND_PORT%
+echo   API Docs : http://localhost:%BACKEND_PORT%/docs
 echo ==============================================
 echo.
