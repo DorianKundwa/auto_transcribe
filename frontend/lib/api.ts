@@ -1,4 +1,4 @@
-import { ProgressEvent, TranscriptResult, Segment, TranscribeSettings, TtsSettings, VoiceBlendItem } from './types';
+import { ProgressEvent, TranscriptResult, Segment, TranscribeSettings, TtsSettings, VoiceBlendItem, CustomVoice } from './types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:8000';
 
@@ -184,3 +184,54 @@ export async function downloadMp3File(jobId: string, filename = 'speech.mp3'): P
 export async function deleteJob(jobId: string): Promise<void> {
   await fetch(`${API_BASE}/api/job/${jobId}`, { method: 'DELETE' });
 }
+
+// ---------------------------------------------------------------------------
+// Voice Cloning & Custom Voices API Client
+// ---------------------------------------------------------------------------
+
+export async function cloneVoice(
+  audioBlobOrFile: Blob | File,
+  name: string,
+  gender: string = 'Male',
+  langCode: string = 'a',
+): Promise<CustomVoice> {
+  const form = new FormData();
+  form.append('file', audioBlobOrFile, 'recording.wav');
+  form.append('name', name);
+  form.append('gender', gender);
+  form.append('lang_code', langCode);
+
+  const res = await fetch(`${API_BASE}/api/voices/clone`, {
+    method: 'POST',
+    body: form,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail ?? 'Voice cloning failed');
+  }
+
+  return await res.json();
+}
+
+export async function fetchCustomVoices(): Promise<CustomVoice[]> {
+  const res = await fetch(`${API_BASE}/api/voices/custom`);
+  if (!res.ok) {
+    throw new Error('Failed to load custom voices');
+  }
+  return await res.json();
+}
+
+export async function deleteCustomVoice(voiceId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/voices/custom/${voiceId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    throw new Error('Failed to delete custom voice');
+  }
+}
+
+export function getCustomVoiceSampleUrl(voiceId: string): string {
+  return `${API_BASE}/api/voices/sample/${voiceId}`;
+}
+

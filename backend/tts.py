@@ -57,10 +57,24 @@ def _get_kokoro_pipeline(lang_code: str) -> Any:
     return _kokoro_cache[lang_code]
 
 
+def _load_voice_unit(pipeline: Any, voice_name: str) -> Any:
+    """Load single voice by name, checking custom voices first then Kokoro built-in voices."""
+    voice_name = voice_name.strip()
+    try:
+        from .voice_cloner import load_custom_voice_tensor
+        custom_t = load_custom_voice_tensor(voice_name)
+        if custom_t is not None:
+            return custom_t
+    except Exception as e:
+        logger.debug(f"Could not load custom voice tensor for {voice_name}: {e}")
+
+    return pipeline.load_voice(voice_name)
+
+
 def _resolve_voice_tensor(pipeline: Any, voice: Any) -> Any:
     """
     Resolve single voice string, blend string syntax (e.g. 'af_heart:0.6,af_bella:0.4'),
-    or list of voices with weights into a style tensor.
+    or list of voices with weights into a style tensor. Supports custom cloned voices.
     """
     if isinstance(voice, str):
         voice_str = voice.strip()
@@ -78,23 +92,23 @@ def _resolve_voice_tensor(pipeline: Any, voice: Any) -> Any:
                 else:
                     entries.append((p.strip(), 1.0))
             if not entries:
-                return pipeline.load_voice("af_heart")
+                return _load_voice_unit(pipeline, "af_heart")
             total_w = sum(w for _, w in entries) or 1.0
             blended = None
             for v_name, w in entries:
                 norm_w = w / total_w
-                t = pipeline.load_voice(v_name)
+                t = _load_voice_unit(pipeline, v_name)
                 if blended is None:
                     blended = t * norm_w
                 else:
                     blended += t * norm_w
             return blended
         else:
-            return pipeline.load_voice(voice_str)
+            return _load_voice_unit(pipeline, voice_str)
 
     elif isinstance(voice, list):
         if not voice:
-            return pipeline.load_voice("af_heart")
+            return _load_voice_unit(pipeline, "af_heart")
 
         entries = []
         for item in voice:
@@ -112,7 +126,7 @@ def _resolve_voice_tensor(pipeline: Any, voice: Any) -> Any:
         blended = None
         for v_name, w in entries:
             norm_w = w / total_w
-            t = pipeline.load_voice(v_name)
+            t = _load_voice_unit(pipeline, v_name)
             if blended is None:
                 blended = t * norm_w
             else:
@@ -120,6 +134,24 @@ def _resolve_voice_tensor(pipeline: Any, voice: Any) -> Any:
         return blended
 
     return voice
+
+
+def _extract_custom_voice_id(voice: Any) -> Optional[str]:
+    """Find if a voice target references a custom cloned voice ID."""
+    if isinstance(voice, str):
+        for part in voice.split(","):
+            v_name = part.split(":")[0].strip()
+            if v_name.startswith("custom_"):
+                return v_name
+    elif isinstance(voice, list):
+        for item in voice:
+            if isinstance(item, dict):
+                v_name = str(item.get("voice") or item.get("id") or "").strip()
+                if v_name.startswith("custom_"):
+                    return v_name
+            elif isinstance(item, str) and item.strip().startswith("custom_"):
+                return item.strip()
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -135,7 +167,7 @@ def _synthesize(
 ) -> None:
     """
     Run Kokoro synthesis synchronously and write a 24 kHz WAV file.
-    Supports single voices and multi-voice blends.
+    Supports single voices, custom cloned voices, and multi-voice blends.
     """
     try:
         import soundfile as sf  # type: ignore
@@ -172,6 +204,21 @@ def _synthesize(
         raise RuntimeError("Kokoro produced no audio output for the given script.")
 
     audio_np = np.concatenate(chunks, axis=0)
+
+    # If this is a custom cloned voice, apply subtle timbre transfer from reference sample
+    custom_id = _extract_custom_voice_id(voice)
+    if custom_id:
+        try:
+            from .voice_cloner import get_custom_voice_sample_path, apply_timbre_transfer
+            sample_p = get_custom_voice_sample_path(custom_id)
+            if sample_p and sample_p.exists():
+                ref_audio, _ = sf.read(sample_p, dtype="float32")
+                if ref_audio.ndim > 1:
+                    ref_audio = np.mean(ref_audio, axis=1)
+                audio_np = apply_timbre_transfer(audio_np, ref_audio, sr=24000, strength=0.50)
+        except Exception as e:
+            logger.warning(f"Could not apply timbre transfer for {custom_id}: {e}")
+
     sf.write(output_path, audio_np, 24000)
     logger.info("TTS WAV written to %s (%.1f s)", output_path, len(audio_np) / 24000)
 
@@ -183,7 +230,7 @@ def synthesize_preview(
     text: Optional[str] = None,
 ) -> bytes:
     """
-    Fast audio preview generator for a single voice or voice blend.
+    Fast audio preview generator for a single voice, custom voice, or voice blend.
     Returns in-memory WAV audio bytes.
     """
     sample_text = (
@@ -226,6 +273,21 @@ def synthesize_preview(
         raise RuntimeError("Failed to synthesize preview audio.")
 
     audio_np = np.concatenate(chunks, axis=0)
+
+    # If this is a custom cloned voice, apply subtle timbre transfer
+    custom_id = _extract_custom_voice_id(voice)
+    if custom_id:
+        try:
+            from .voice_cloner import get_custom_voice_sample_path, apply_timbre_transfer
+            sample_p = get_custom_voice_sample_path(custom_id)
+            if sample_p and sample_p.exists():
+                ref_audio, _ = sf.read(sample_p, dtype="float32")
+                if ref_audio.ndim > 1:
+                    ref_audio = np.mean(ref_audio, axis=1)
+                audio_np = apply_timbre_transfer(audio_np, ref_audio, sr=24000, strength=0.50)
+        except Exception as e:
+            logger.warning(f"Could not apply preview timbre transfer for {custom_id}: {e}")
+
     buf = io.BytesIO()
     sf.write(buf, audio_np, 24000, format="WAV")
     buf.seek(0)

@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { TtsSettings, VoiceBlendItem, ModelOption, DeviceOption } from '@/lib/types';
-import { previewTtsVoice } from '@/lib/api';
+import { TtsSettings, VoiceBlendItem, ModelOption, DeviceOption, CustomVoice } from '@/lib/types';
+import { previewTtsVoice, fetchCustomVoices, cloneVoice, deleteCustomVoice, getCustomVoiceSampleUrl } from '@/lib/api';
 import {
   Sparkles,
   Trash2,
@@ -18,6 +18,14 @@ import {
   Check,
   RotateCcw,
   Loader2,
+  Mic,
+  Square,
+  UploadCloud,
+  FileAudio,
+  Radio,
+  Info,
+  CheckCircle2,
+  AlertCircle,
 } from 'lucide-react';
 
 export interface KokoroVoiceOption {
@@ -27,6 +35,7 @@ export interface KokoroVoiceOption {
   lang: string;
   langCode: string;
   flag: string;
+  isCustom?: boolean;
 }
 
 export const KOKORO_VOICES: KokoroVoiceOption[] = [
@@ -144,28 +153,84 @@ export function TtsPanel({
 }: TtsPanelProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showVoiceLibrary, setShowVoiceLibrary] = useState(false);
+  const [showCloneStudio, setShowCloneStudio] = useState(false);
+
+  // Custom voices
+  const [customVoices, setCustomVoices] = useState<CustomVoice[]>([]);
+  const [loadingCustomVoices, setLoadingCustomVoices] = useState(false);
+
+  // Voice library filters
   const [searchQuery, setSearchQuery] = useState('');
-  const [genderFilter, setGenderFilter] = useState<'All' | 'Female' | 'Male'>('All');
+  const [libraryTab, setLibraryTab] = useState<'All' | 'Custom' | 'Female' | 'Male'>('All');
+  
+  // Audio preview playback state
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewVoiceId, setPreviewVoiceId] = useState<string | null>(null);
   const [isPlayingPreview, setIsPlayingPreview] = useState(false);
-
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
 
+  // Voice cloning studio state
+  const [cloneMode, setCloneMode] = useState<'upload' | 'record'>('record');
+  const [cloneName, setCloneName] = useState('');
+  const [cloneGender, setCloneGender] = useState<'Male' | 'Female' | 'auto'>('auto');
+  const [cloneLangCode, setCloneLangCode] = useState('a');
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [isCloning, setIsCloning] = useState(false);
+  const [cloneError, setCloneError] = useState<string | null>(null);
+  const [cloneSuccess, setCloneSuccess] = useState<string | null>(null);
+
+  // Audio recording state
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordSeconds, setRecordSeconds] = useState(0);
+  const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
+  const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+
+  // Load custom voices on mount
+  const refreshCustomVoices = async () => {
+    try {
+      setLoadingCustomVoices(true);
+      const list = await fetchCustomVoices();
+      setCustomVoices(list);
+    } catch (e) {
+      console.warn('Could not load custom voices:', e);
+    } finally {
+      setLoadingCustomVoices(false);
+    }
+  };
+
   useEffect(() => {
+    refreshCustomVoices();
     return () => {
       if (previewAudioRef.current) {
         previewAudioRef.current.pause();
         previewAudioRef.current = null;
       }
+      if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
+
+  // Combined voice options
+  const allVoiceOptions: KokoroVoiceOption[] = [
+    ...customVoices.map((cv) => ({
+      id: cv.id,
+      name: `${cv.name} (Cloned)`,
+      gender: cv.gender,
+      lang: cv.lang,
+      langCode: cv.langCode,
+      flag: '✨',
+      isCustom: true,
+    })),
+    ...KOKORO_VOICES,
+  ];
 
   const wordCount = script.trim() ? script.trim().split(/\s+/).length : 0;
   const charCount = script.length;
 
   const handleVoiceChange = (voiceId: string) => {
-    const voiceObj = KOKORO_VOICES.find((v) => v.id === voiceId);
+    const voiceObj = allVoiceOptions.find((v) => v.id === voiceId);
     if (voiceObj) {
       onSettingsChange({
         voice: voiceObj.id,
@@ -178,7 +243,6 @@ export function TtsPanel({
 
   const handlePlayPreview = async (voiceTarget?: string | VoiceBlendItem[]) => {
     try {
-      // If already playing this preview, toggle pause
       if (previewAudioRef.current && isPlayingPreview) {
         previewAudioRef.current.pause();
         setIsPlayingPreview(false);
@@ -196,11 +260,16 @@ export function TtsPanel({
 
       setPreviewVoiceId(targetKey);
 
+      const targetVoiceObj = allVoiceOptions.find(
+        (v) => v.id === (typeof target === 'string' ? target : target[0]?.voice)
+      );
+      const activeLangCode = targetVoiceObj?.langCode || settings.langCode || 'a';
+
       const url = await previewTtsVoice(
         target,
-        settings.langCode,
+        activeLangCode,
         settings.speed,
-        'Hello! This is Kokoro Text to Speech preview.',
+        'Hello! This is a voice preview for AutoTranscribe.',
       );
 
       if (previewAudioRef.current) {
@@ -222,6 +291,112 @@ export function TtsPanel({
       console.error('Failed to preview voice:', err);
     } finally {
       setPreviewLoading(false);
+    }
+  };
+
+  // Recording methods
+  const startRecording = async () => {
+    try {
+      setRecordedBlob(null);
+      setRecordedAudioUrl(null);
+      setCloneError(null);
+      audioChunksRef.current = [];
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+        setRecordedBlob(audioBlob);
+        const url = URL.createObjectURL(audioBlob);
+        setRecordedAudioUrl(url);
+        // Stop all tracks
+        stream.getTracks().forEach((track) => track.stop());
+      };
+
+      mediaRecorder.start(200);
+      setIsRecording(true);
+      setRecordSeconds(0);
+
+      timerRef.current = setInterval(() => {
+        setRecordSeconds((prev) => prev + 1);
+      }, 1000);
+    } catch (err: any) {
+      console.error('Microphone access error:', err);
+      setCloneError(err.message || 'Could not access microphone. Please check browser permissions.');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      if (timerRef.current) clearInterval(timerRef.current);
+    }
+  };
+
+  const handleCloneSubmit = async () => {
+    const audioData = cloneMode === 'record' ? recordedBlob : uploadedFile;
+    if (!audioData) {
+      setCloneError('Please record your voice or select an audio file first.');
+      return;
+    }
+
+    const nameToUse = cloneName.trim() || 'My Voice';
+
+    try {
+      setIsCloning(true);
+      setCloneError(null);
+      setCloneSuccess(null);
+
+      const newVoice = await cloneVoice(
+        audioData,
+        nameToUse,
+        cloneGender,
+        cloneLangCode,
+      );
+
+      setCloneSuccess(`Voice "${newVoice.name}" cloned successfully!`);
+      await refreshCustomVoices();
+
+      // Automatically select newly cloned voice
+      onSettingsChange({
+        voice: newVoice.id,
+        langCode: newVoice.langCode,
+      });
+
+      // Close studio after 1.2s and test preview
+      setTimeout(() => {
+        setShowCloneStudio(false);
+        setCloneSuccess(null);
+        handlePlayPreview(newVoice.id);
+      }, 1200);
+    } catch (err: any) {
+      console.error('Cloning failed:', err);
+      setCloneError(err.message || 'Voice cloning failed.');
+    } finally {
+      setIsCloning(false);
+    }
+  };
+
+  const handleDeleteVoice = async (voiceId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm('Are you sure you want to delete this custom cloned voice?')) return;
+    try {
+      await deleteCustomVoice(voiceId);
+      await refreshCustomVoices();
+      if (settings.voice === voiceId) {
+        onSettingsChange({ voice: 'af_heart', langCode: 'a' });
+      }
+    } catch (err) {
+      console.error('Failed to delete voice:', err);
     }
   };
 
@@ -248,13 +423,18 @@ export function TtsPanel({
   };
 
   // Filtered voice list for the library modal
-  const filteredVoices = KOKORO_VOICES.filter((v) => {
+  const filteredVoices = allVoiceOptions.filter((v) => {
     const matchesSearch =
       v.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       v.lang.toLowerCase().includes(searchQuery.toLowerCase()) ||
       v.id.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesGender = genderFilter === 'All' || v.gender === genderFilter;
-    return matchesSearch && matchesGender;
+    
+    let matchesTab = true;
+    if (libraryTab === 'Custom') matchesTab = !!v.isCustom;
+    else if (libraryTab === 'Female') matchesTab = v.gender === 'Female';
+    else if (libraryTab === 'Male') matchesTab = v.gender === 'Male';
+
+    return matchesSearch && matchesTab;
   });
 
   const totalBlendWeight = settings.voiceBlend.reduce((sum, v) => sum + (v.weight || 0), 0) || 1;
@@ -297,7 +477,7 @@ export function TtsPanel({
           id="script-textarea"
           className="script-textarea"
           rows={6}
-          placeholder="Type or paste your script here… Kokoro TTS will synthesize voice and WhisperX will align precise timestamps for every word."
+          placeholder="Type or paste your script here… Synthesize speech with Kokoro or your cloned voice, and WhisperX will align precise word timestamps."
           value={script}
           onChange={(e) => onScriptChange(e.target.value)}
           disabled={disabled}
@@ -313,7 +493,7 @@ export function TtsPanel({
       <div className="setting-group">
         <div className="voice-mode-header">
           <label className="setting-label">
-            <Volume2 size={14} className="inline-icon" /> Kokoro Voice Selection
+            <Volume2 size={14} className="inline-icon" /> Voice Selection
           </label>
 
           {/* Voice Mode Toggle: Single vs Multi-Voice Blend */}
@@ -362,6 +542,16 @@ export function TtsPanel({
                 onChange={(e) => handleVoiceChange(e.target.value)}
                 disabled={disabled}
               >
+                {customVoices.length > 0 && (
+                  <optgroup label="✨ Custom Cloned Voices">
+                    {customVoices.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        ✨ {v.name} ({v.gender} · Cloned)
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+
                 <optgroup label="🇺🇸 American English">
                   {KOKORO_VOICES.filter((v) => v.langCode === 'a').map((v) => (
                     <option key={v.id} value={v.id}>
@@ -447,27 +637,38 @@ export function TtsPanel({
               </button>
             </div>
 
-            {/* Quick Browse Library Modal Button */}
-            <button
-              type="button"
-              className="voice-library-link"
-              onClick={() => setShowVoiceLibrary(true)}
-            >
-              <Search size={13} />
-              Browse & Audition Voice Library ({KOKORO_VOICES.length} voices)
-            </button>
+            {/* Quick Actions Row: Clone Voice & Browse Library */}
+            <div className="voice-quick-actions">
+              <button
+                type="button"
+                className="voice-clone-action-btn"
+                onClick={() => setShowCloneStudio(true)}
+              >
+                <Mic size={13} />
+                <span>🎙️ Clone Voice</span>
+              </button>
+
+              <button
+                type="button"
+                className="voice-library-link"
+                onClick={() => setShowVoiceLibrary(true)}
+              >
+                <Search size={13} />
+                <span>Audition Voices ({allVoiceOptions.length})</span>
+              </button>
+            </div>
           </div>
         ) : (
           /* MULTI-VOICE BLEND SELECTION */
           <div className="blend-voice-controls">
             <div className="blend-help-banner">
               <Layers size={14} />
-              <span>Mix multiple Kokoro voices to create a unique custom voice identity.</span>
+              <span>Mix multiple voices (including your cloned voices!) to create a unique custom hybrid timbre.</span>
             </div>
 
             <div className="blend-list">
               {settings.voiceBlend.map((item, idx) => {
-                const voiceObj = KOKORO_VOICES.find((v) => v.id === item.voice);
+                const voiceObj = allVoiceOptions.find((v) => v.id === item.voice);
                 const pct = Math.round((item.weight / totalBlendWeight) * 100);
 
                 return (
@@ -518,6 +719,16 @@ export function TtsPanel({
               >
                 <Plus size={14} />
                 Add Voice to Mix
+              </button>
+
+              <button
+                type="button"
+                className="blend-add-btn"
+                onClick={() => setShowCloneStudio(true)}
+                disabled={disabled}
+              >
+                <Mic size={14} />
+                Clone New Voice
               </button>
 
               <button
@@ -637,15 +848,266 @@ export function TtsPanel({
         </div>
       )}
 
-      {/* VOICE LIBRARY MODAL / DRAWER */}
+      {/* ------------------------------------------------------------- */}
+      {/* VOICE CLONING STUDIO MODAL */}
+      {/* ------------------------------------------------------------- */}
+      {showCloneStudio && (
+        <div className="voice-modal-overlay" onClick={() => !isCloning && setShowCloneStudio(false)}>
+          <div className="voice-modal-content clone-studio-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="voice-modal-header">
+              <div className="clone-modal-title-wrap">
+                <div className="clone-badge-icon">
+                  <Mic size={18} />
+                </div>
+                <div>
+                  <h3 className="voice-modal-title">Voice Cloning Studio</h3>
+                  <p className="voice-modal-sub">
+                    Record your microphone or upload a 3–15 second audio sample to clone any voice locally.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="voice-modal-close"
+                onClick={() => !isCloning && setShowCloneStudio(false)}
+                disabled={isCloning}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="clone-modal-body">
+              {/* Mode Selector */}
+              <div className="clone-mode-tabs">
+                <button
+                  type="button"
+                  className={`clone-tab-btn ${cloneMode === 'record' ? 'active' : ''}`}
+                  onClick={() => setCloneMode('record')}
+                  disabled={isCloning || isRecording}
+                >
+                  <Mic size={14} />
+                  Record Microphone
+                </button>
+                <button
+                  type="button"
+                  className={`clone-tab-btn ${cloneMode === 'upload' ? 'active' : ''}`}
+                  onClick={() => setCloneMode('upload')}
+                  disabled={isCloning || isRecording}
+                >
+                  <UploadCloud size={14} />
+                  Upload Audio File
+                </button>
+              </div>
+
+              {/* Mode 1: Microphone Recorder */}
+              {cloneMode === 'record' ? (
+                <div className="recorder-container">
+                  {!isRecording && !recordedBlob ? (
+                    <div className="record-prompt-card">
+                      <div className="mic-pulse-ring idle">
+                        <Mic size={32} />
+                      </div>
+                      <p className="record-instruction">
+                        Click <strong>Start Recording</strong> and speak clearly into your microphone for 5 to 10 seconds.
+                      </p>
+                      <button
+                        type="button"
+                        className="record-primary-btn"
+                        onClick={startRecording}
+                        disabled={isCloning}
+                      >
+                        <Radio size={16} />
+                        Start Recording
+                      </button>
+                    </div>
+                  ) : isRecording ? (
+                    <div className="record-active-card">
+                      <div className="mic-pulse-ring recording">
+                        <div className="live-dot" />
+                        <Mic size={32} />
+                      </div>
+                      <div className="record-timer-display">
+                        00:{recordSeconds < 10 ? `0${recordSeconds}` : recordSeconds}
+                      </div>
+                      <p className="record-recording-text">Recording your voice sample…</p>
+                      <button
+                        type="button"
+                        className="record-stop-btn"
+                        onClick={stopRecording}
+                      >
+                        <Square size={16} />
+                        Stop Recording
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="record-review-card">
+                      <div className="record-review-header">
+                        <CheckCircle2 size={16} className="text-success" />
+                        <span>Voice sample recorded ({recordSeconds} seconds)</span>
+                      </div>
+
+                      {recordedAudioUrl && (
+                        <audio controls src={recordedAudioUrl} className="review-audio-player" />
+                      )}
+
+                      <button
+                        type="button"
+                        className="record-again-btn"
+                        onClick={startRecording}
+                        disabled={isCloning}
+                      >
+                        <RotateCcw size={13} />
+                        Re-record Sample
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* Mode 2: Audio File Upload */
+                <div className="uploader-container">
+                  <label className="file-drop-zone">
+                    <input
+                      type="file"
+                      accept="audio/*,.mp3,.wav,.m4a,.flac,.ogg,.webm"
+                      className="hidden-file-input"
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files[0]) {
+                          setUploadedFile(e.target.files[0]);
+                          setCloneError(null);
+                        }
+                      }}
+                      disabled={isCloning}
+                    />
+                    <FileAudio size={36} className="drop-icon" />
+                    <span className="drop-title">
+                      {uploadedFile ? uploadedFile.name : 'Click or drag audio sample here'}
+                    </span>
+                    <span className="drop-sub">Supports MP3, WAV, M4A, FLAC, OGG (3–30 sec)</span>
+                  </label>
+                  {uploadedFile && (
+                    <div className="selected-file-badge">
+                      <span>{uploadedFile.name} ({(uploadedFile.size / 1024 / 1024).toFixed(2)} MB)</span>
+                      <button
+                        type="button"
+                        className="clear-file-btn"
+                        onClick={() => setUploadedFile(null)}
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Voice Metadata Inputs */}
+              <div className="clone-form-grid">
+                <div className="setting-group">
+                  <label className="setting-label">Voice Name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. My Voice, John (Podcast), Narrator"
+                    className="setting-input"
+                    value={cloneName}
+                    onChange={(e) => setCloneName(e.target.value)}
+                    disabled={isCloning}
+                  />
+                </div>
+
+                <div className="setting-group">
+                  <label className="setting-label">Vocal Timbre Profile</label>
+                  <select
+                    className="setting-select"
+                    value={cloneGender}
+                    onChange={(e) => setCloneGender(e.target.value as any)}
+                    disabled={isCloning}
+                  >
+                    <option value="auto">Auto-detect from audio</option>
+                    <option value="Male">Male Vocal Resonance</option>
+                    <option value="Female">Female Vocal Resonance</option>
+                  </select>
+                </div>
+
+                <div className="setting-group">
+                  <label className="setting-label">Language / Accent Base</label>
+                  <select
+                    className="setting-select"
+                    value={cloneLangCode}
+                    onChange={(e) => setCloneLangCode(e.target.value)}
+                    disabled={isCloning}
+                  >
+                    <option value="a">🇺🇸 American English</option>
+                    <option value="b">🇬🇧 British English</option>
+                    <option value="e">🇪🇸 Spanish</option>
+                    <option value="f">🇫🇷 French</option>
+                    <option value="h">🇮🇳 Hindi</option>
+                    <option value="i">🇮🇹 Italian</option>
+                    <option value="p">🇧🇷 Portuguese</option>
+                    <option value="j">🇯🇵 Japanese</option>
+                    <option value="z">🇨🇳 Mandarin Chinese</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Feedback messages */}
+              {cloneError && (
+                <div className="clone-alert error">
+                  <AlertCircle size={15} />
+                  <span>{cloneError}</span>
+                </div>
+              )}
+
+              {cloneSuccess && (
+                <div className="clone-alert success">
+                  <CheckCircle2 size={15} />
+                  <span>{cloneSuccess}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="voice-modal-footer">
+              <button
+                type="button"
+                className="script-btn-secondary"
+                onClick={() => setShowCloneStudio(false)}
+                disabled={isCloning}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                className="clone-submit-btn"
+                onClick={handleCloneSubmit}
+                disabled={isCloning || (cloneMode === 'record' ? !recordedBlob : !uploadedFile)}
+              >
+                {isCloning ? (
+                  <>
+                    <Loader2 size={15} className="spin" />
+                    <span>Extracting Acoustics & Synthesizing Model…</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={15} />
+                    <span>Clone & Save Voice</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* VOICE LIBRARY MODAL / BROWSER */}
+      {/* ------------------------------------------------------------- */}
       {showVoiceLibrary && (
         <div className="voice-modal-overlay" onClick={() => setShowVoiceLibrary(false)}>
           <div className="voice-modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="voice-modal-header">
               <div>
-                <h3 className="voice-modal-title">Kokoro Voice Library</h3>
+                <h3 className="voice-modal-title">Voice Library</h3>
                 <p className="voice-modal-sub">
-                  Audition voices and select or add to your multi-voice mix.
+                  Audition Kokoro and custom cloned voices, or add them to your multi-voice mix.
                 </p>
               </div>
               <button
@@ -671,14 +1133,14 @@ export function TtsPanel({
               </div>
 
               <div className="voice-gender-filter">
-                {(['All', 'Female', 'Male'] as const).map((g) => (
+                {(['All', 'Custom', 'Female', 'Male'] as const).map((tab) => (
                   <button
-                    key={g}
+                    key={tab}
                     type="button"
-                    className={`gender-filter-btn ${genderFilter === g ? 'active' : ''}`}
-                    onClick={() => setGenderFilter(g)}
+                    className={`gender-filter-btn ${libraryTab === tab ? 'active' : ''}`}
+                    onClick={() => setLibraryTab(tab)}
                   >
-                    {g}
+                    {tab === 'Custom' ? `✨ Cloned (${customVoices.length})` : tab}
                   </button>
                 ))}
               </div>
@@ -694,14 +1156,29 @@ export function TtsPanel({
                 return (
                   <div
                     key={v.id}
-                    className={`voice-card ${isSelectedSingle || isSelectedBlend ? 'selected' : ''}`}
+                    className={`voice-card ${isSelectedSingle || isSelectedBlend ? 'selected' : ''} ${v.isCustom ? 'custom-voice-card' : ''}`}
                   >
                     <div className="voice-card-top">
                       <span className="voice-card-flag">{v.flag}</span>
                       <div className="voice-card-info">
-                        <span className="voice-card-name">{v.name}</span>
+                        <div className="voice-card-name-row">
+                          <span className="voice-card-name">{v.name}</span>
+                          {v.isCustom && (
+                            <span className="custom-voice-pill">Cloned</span>
+                          )}
+                        </div>
                         <span className="voice-card-meta">{v.lang} · {v.gender}</span>
                       </div>
+                      {v.isCustom && (
+                        <button
+                          type="button"
+                          className="voice-card-delete-btn"
+                          onClick={(e) => handleDeleteVoice(v.id, e)}
+                          title="Delete this custom voice"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
                     </div>
 
                     <div className="voice-card-actions">
@@ -719,7 +1196,7 @@ export function TtsPanel({
                         ) : (
                           <Play size={13} />
                         )}
-                        <span>{isCurrentPlaying ? 'Playing' : 'Listen'}</span>
+                        <span>{isCurrentPlaying ? 'Playing' : 'Preview'}</span>
                       </button>
 
                       {settings.mode === 'single' ? (
@@ -768,14 +1245,28 @@ export function TtsPanel({
             </div>
 
             <div className="voice-modal-footer">
-              <span>{filteredVoices.length} voices found</span>
               <button
                 type="button"
-                className="voice-modal-done-btn"
-                onClick={() => setShowVoiceLibrary(false)}
+                className="voice-clone-footer-btn"
+                onClick={() => {
+                  setShowVoiceLibrary(false);
+                  setShowCloneStudio(true);
+                }}
               >
-                Done
+                <Mic size={14} />
+                <span>Clone New Voice</span>
               </button>
+
+              <div className="footer-right-actions">
+                <span className="voice-count-text">{filteredVoices.length} voices found</span>
+                <button
+                  type="button"
+                  className="voice-modal-done-btn"
+                  onClick={() => setShowVoiceLibrary(false)}
+                >
+                  Done
+                </button>
+              </div>
             </div>
           </div>
         </div>

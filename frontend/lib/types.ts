@@ -70,3 +70,17 @@ export interface EditAction {
   before: Segment[];
   after: Segment[];
 }
+
+export interface CustomVoice {
+  id: string;
+  name: string;
+  gender: 'Female' | 'Male';
+  lang: string;
+  langCode: string;
+  flag: string;
+  duration: number;
+  median_pitch?: number;
+  created_at: number;
+  is_custom: boolean;
+}
+

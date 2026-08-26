@@ -14,6 +14,11 @@ Script ──▶ Kokoro TTS (24kHz WAV) ──▶ WhisperX Alignment ──▶ W
 
 ## Features
 
+- 🎙️ **Local Voice Cloning & Custom Voice Studio**:
+  - Clone any voice from a 3–15 second audio upload (MP3, WAV, M4A, FLAC, OGG) or live browser microphone recording
+  - Instant acoustic profile & formant analysis, generating personalized style models
+  - Mix cloned voices with built-in voices in **Multi-Voice Blending** (e.g., 70% cloned + 30% Heart)
+  - Full word-level timestamp alignment and subtitle exports on all cloned voice outputs
 - ✨ **Script → Kokoro TTS → WAV → WhisperX Timestamps**:
   - High quality speech synthesis with [Kokoro-82M](https://github.com/hexgrad/kokoro) (Apache licensed)
   - Word-level time alignment using WhisperX

@@ -98,3 +98,6 @@ yarn-error.log*
 kokoro/
 
 backend/models/
+backend/custom_voices/samples/
+backend/custom_voices/vectors/
+

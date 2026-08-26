@@ -206,6 +206,61 @@ async def preview_tts_voice(request: TtsPreviewRequest):
 
 
 # ---------------------------------------------------------------------------
+# Voice Cloning & Custom Voices API
+# ---------------------------------------------------------------------------
+@app.post("/api/voices/clone")
+async def clone_voice_endpoint(
+    file: UploadFile = File(...),
+    name: str = Form("My Cloned Voice"),
+    gender: Optional[str] = Form(None),
+    lang_code: str = Form("a"),
+):
+    try:
+        from .voice_cloner import clone_voice_from_audio
+        content = await file.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="Empty audio file provided.")
+        
+        voice_record = await asyncio.to_thread(
+            clone_voice_from_audio,
+            audio_source=content,
+            name=name,
+            gender=gender if gender and gender != "auto" else None,
+            lang_code=lang_code,
+        )
+        return JSONResponse(content=voice_record)
+    except Exception as exc:
+        logger.exception("Voice cloning failed")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/api/voices/custom")
+async def get_custom_voices_endpoint():
+    from .voice_cloner import list_custom_voices
+    voices = list_custom_voices()
+    return JSONResponse(content=voices)
+
+
+@app.delete("/api/voices/custom/{voice_id}")
+async def delete_custom_voice_endpoint(voice_id: str):
+    from .voice_cloner import delete_custom_voice
+    success = delete_custom_voice(voice_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Custom voice not found")
+    return {"ok": True}
+
+
+@app.get("/api/voices/sample/{voice_id}")
+async def get_custom_voice_sample_endpoint(voice_id: str):
+    from .voice_cloner import get_custom_voice_sample_path
+    p = get_custom_voice_sample_path(voice_id)
+    if not p or not os.path.exists(p):
+        raise HTTPException(status_code=404, detail="Voice sample not found")
+    return FileResponse(path=str(p), media_type="audio/wav", filename=f"{voice_id}_sample.wav")
+
+
+
+# ---------------------------------------------------------------------------
 # Background workers
 # ---------------------------------------------------------------------------
 async def _run_transcribe_job(
