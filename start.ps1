@@ -1,11 +1,21 @@
 [CmdletBinding()]
 param (
-    [switch]$Prod
+    [switch]$Prod,
+    [switch]$DryRun,
+    [switch]$Help
 )
 
 # AutoTranscribe Launcher
-# Usage: .\start.ps1 [-Prod]
-# Opens two terminal windows: one for the backend, one for the frontend.
+# Usage: .\start.ps1 [-Prod] [-DryRun] [-Help]
+
+if ($Help) {
+    Write-Host "AutoTranscribe Launcher"
+    Write-Host "Usage: .\start.ps1 [-Prod] [-DryRun] [-Help]"
+    Write-Host "  -Prod   : Build and start Next.js frontend in production mode"
+    Write-Host "  -DryRun : Verify prerequisites and dependencies without launching servers"
+    Write-Host "  -Help   : Display this help message"
+    exit 0
+}
 
 $Root = $PSScriptRoot
 
@@ -16,9 +26,9 @@ function Write-Warn($msg) { Write-Host "  $msg" -ForegroundColor Yellow }
 function Write-Err($msg)  { Write-Host "  $msg" -ForegroundColor Red }
 
 Write-Host ""
-Write-Host "  ╔══════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "  ║     AutoTranscribe  v1.0     ║" -ForegroundColor Cyan
-Write-Host "  ╚══════════════════════════════╝" -ForegroundColor Cyan
+Write-Host "  +------------------------------+" -ForegroundColor Cyan
+Write-Host "  |     AutoTranscribe  v1.0     |" -ForegroundColor Cyan
+Write-Host "  +------------------------------+" -ForegroundColor Cyan
 Write-Host ""
 
 # ── 1. Check prerequisites ───────────────────────────────────────────────────
@@ -59,12 +69,15 @@ if (-not (Test-Path $VenvPython)) {
     Write-Ok "Virtual environment created."
 }
 
-# Always check / install requirements
-Write-Step "Installing / verifying Python packages..."
-& $VenvPython -m pip install -q -r $Requirements
+# Fast-check dependencies
+& $VenvPython -c "import fastapi, uvicorn, whisperx, kokoro, soundfile, librosa" 2>$null
 if ($LASTEXITCODE -ne 0) {
-    Write-Err "pip install failed. See output above."
-    exit 1
+    Write-Step "Installing / verifying Python packages..."
+    & $VenvPython -m pip install -q -r $Requirements
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "pip install failed. See output above."
+        exit 1
+    }
 }
 Write-Ok "Python packages ready."
 Write-Host ""
@@ -76,7 +89,7 @@ $FrontendDir = Join-Path $Root "frontend"
 if (-not (Test-Path (Join-Path $FrontendDir "node_modules"))) {
     Write-Step "Installing npm packages (first run)..."
     Push-Location $FrontendDir
-    npm install --silent
+    cmd.exe /c "npm install --silent"
     if ($LASTEXITCODE -ne 0) {
         Write-Err "npm install failed. Is Node 18+ installed?"
         Pop-Location
@@ -100,6 +113,14 @@ $BackendPort = Get-FreePort
 $FrontendPort = Get-FreePort
 $env:NEXT_PUBLIC_API_BASE = "http://localhost:$BackendPort"
 $env:PORT = $FrontendPort
+
+if ($DryRun) {
+    Write-Host ""
+    Write-Ok "Dry run complete. All prerequisites and dependencies are satisfied."
+    Write-Host "  Backend Port  : $BackendPort"
+    Write-Host "  Frontend Port : $FrontendPort"
+    exit 0
+}
 
 # ── 5. Launch backend in a new window ───────────────────────────────────────
 
