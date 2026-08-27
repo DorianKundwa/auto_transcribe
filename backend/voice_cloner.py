@@ -146,10 +146,22 @@ def load_and_preprocess_audio(
     if data.ndim > 1:
         data = np.mean(data, axis=1)
 
-    # Resample to 24 kHz if needed
+    # Slice early to avoid processing massive files
+    max_in_samples = int(sr * (max_duration_sec + 10.0))
+    if len(data) > max_in_samples:
+        data = data[:max_in_samples]
+
+    # Resample to target_sr if needed using fast rational polyphase resampling
     if sr != target_sr:
-        num_samples = int(len(data) * target_sr / sr)
-        data = scipy.signal.resample(data, num_samples).astype(np.float32)
+        import math
+        gcd = math.gcd(int(target_sr), int(sr))
+        up = int(target_sr // gcd)
+        down = int(sr // gcd)
+        try:
+            data = scipy.signal.resample_poly(data, up, down).astype(np.float32)
+        except Exception:
+            num_samples = int(len(data) * target_sr / sr)
+            data = scipy.signal.resample(data, num_samples).astype(np.float32)
         sr = target_sr
 
     # High-pass filter (> 50 Hz) to remove microphone pops / rumble
@@ -922,6 +934,7 @@ def delete_custom_voice(voice_id: str) -> bool:
         SAMPLES_DIR / f"{voice_id}.wav",
         VECTORS_DIR / f"{voice_id}.pt",
         VECTORS_DIR / f"{voice_id}_dvector.npy",
+        VECTORS_DIR / f"{voice_id}_ecapa.npy",
     ):
         if path.exists():
             try:

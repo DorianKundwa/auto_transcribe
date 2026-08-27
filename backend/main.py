@@ -229,14 +229,18 @@ async def clone_voice_endpoint(
     gender: Optional[str] = Form(None),
     lang_code: str = Form("a"),
 ):
+    """
+    Zero-shot voice cloning endpoint using ECAPA-TDNN speaker embeddings.
+    Inspired by XTTS v2 / Chatterbox reference audio conditioning.
+    """
     try:
-        from .voice_cloner import clone_voice_from_audio
+        from .xtts_engine import clone_voice_xtts_style
         content = await file.read()
         if not content:
             raise HTTPException(status_code=400, detail="Empty audio file provided.")
-        
+
         voice_record = await asyncio.to_thread(
-            clone_voice_from_audio,
+            clone_voice_xtts_style,
             audio_source=content,
             name=name,
             gender=gender if gender and gender != "auto" else None,
@@ -271,15 +275,15 @@ async def _run_voice_training_job(
     job["status"] = "running"
 
     try:
-        from .voice_trainer import train_voice_model
+        # Use XTTS-style ECAPA-TDNN zero-shot cloning engine (primary)
+        from .xtts_engine import clone_voice_xtts_style
 
         voice_record = await asyncio.to_thread(
-            train_voice_model,
+            clone_voice_xtts_style,
             audio_source=audio_bytes,
             name=name,
             gender=gender,
             lang_code=lang_code,
-            epochs=epochs,
             progress_cb=progress_cb,
         )
         job["status"] = "complete"
@@ -291,7 +295,7 @@ async def _run_voice_training_job(
                 "stage": "complete",
                 "pct": 100,
                 "voice_record": voice_record,
-                "message": "Training complete!",
+                "message": "Voice cloning complete!",
             })
         except Exception:
             pass
