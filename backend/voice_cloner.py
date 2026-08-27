@@ -18,6 +18,8 @@ import json
 import logging
 import os
 import shutil
+import subprocess
+import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -46,23 +48,89 @@ HF_CACHE_DIR = Path(__file__).parent / "models" / "hf_cache"
 # Audio Preprocessing & Feature Extraction
 # ---------------------------------------------------------------------------
 
+def _load_audio_any_format(
+    file_source: Union[str, Path, io.BytesIO, bytes],
+    target_sr: int = 24000,
+) -> Tuple[np.ndarray, int]:
+    """
+    Robust audio loader that decodes any format (WAV, MP3, WebM, OGG, M4A, FLAC, AAC)
+    to a 1D float32 numpy array using soundfile with FFmpeg subprocess fallback.
+    """
+    # 1. Try reading with soundfile if file path
+    if isinstance(file_source, (str, Path)):
+        try:
+            data, sr = sf.read(str(file_source), dtype="float32")
+            if data.ndim > 1:
+                data = np.mean(data, axis=1)
+            return data.astype(np.float32), sr
+        except Exception:
+            pass
+
+    # 2. Extract raw bytes from buffer/bytes/path
+    raw_bytes: bytes
+    if isinstance(file_source, (bytes, bytearray)):
+        raw_bytes = bytes(file_source)
+    elif isinstance(file_source, io.BytesIO):
+        file_source.seek(0)
+        raw_bytes = file_source.read()
+    elif isinstance(file_source, (str, Path)):
+        with open(file_source, "rb") as f:
+            raw_bytes = f.read()
+    else:
+        raise ValueError(f"Unsupported audio source type: {type(file_source)}")
+
+    # Try soundfile on BytesIO
+    try:
+        data, sr = sf.read(io.BytesIO(raw_bytes), dtype="float32")
+        if data.ndim > 1:
+            data = np.mean(data, axis=1)
+        return data.astype(np.float32), sr
+    except Exception:
+        pass
+
+    # 3. Fallback: FFmpeg subprocess conversion (WebM, Opus, MP3, AAC, M4A, etc.)
+    with tempfile.NamedTemporaryFile(suffix=".tmp", delete=False) as in_f:
+        in_path = in_f.name
+        in_f.write(raw_bytes)
+
+    out_path = in_path + ".wav"
+    try:
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", in_path,
+            "-ar", str(target_sr),
+            "-ac", "1",
+            "-f", "wav",
+            out_path,
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode != 0 or not os.path.exists(out_path):
+            raise RuntimeError(f"FFmpeg audio conversion failed: {res.stderr}")
+
+        data, sr = sf.read(out_path, dtype="float32")
+        if data.ndim > 1:
+            data = np.mean(data, axis=1)
+        return data.astype(np.float32), sr
+    finally:
+        for p in (in_path, out_path):
+            if os.path.exists(p):
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
+
+
 def load_and_preprocess_audio(
-    file_path: Union[str, Path, io.BytesIO],
+    file_path: Union[str, Path, io.BytesIO, bytes],
     target_sr: int = 24000,
     max_duration_sec: float = 30.0,
 ) -> Tuple[np.ndarray, float]:
     """
-    Read audio from disk or buffer, convert to mono, resample to target_sr,
+    Read audio from disk, bytes, or buffer, convert to mono, resample to target_sr,
     trim silence, and normalize RMS amplitude.
     Returns (audio_float32, duration_seconds).
     """
-    try:
-        data, sr = sf.read(file_path, dtype="float32")
-    except Exception:
-        # Fallback to torchaudio or ffmpeg if soundfile fails on mp3/m4a
-        import torchaudio
-        tensor, sr = torchaudio.load(file_path)
-        data = tensor.numpy().T
+    data, sr = _load_audio_any_format(file_path, target_sr=target_sr)
 
     # Convert to mono if multi-channel
     if data.ndim > 1:

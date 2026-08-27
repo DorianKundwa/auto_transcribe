@@ -196,7 +196,8 @@ export async function cloneVoice(
   langCode: string = 'a',
 ): Promise<CustomVoice> {
   const form = new FormData();
-  form.append('file', audioBlobOrFile, 'recording.wav');
+  const filename = audioBlobOrFile instanceof File ? audioBlobOrFile.name : 'recording.webm';
+  form.append('file', audioBlobOrFile, filename);
   form.append('name', name);
   form.append('gender', gender);
   form.append('lang_code', langCode);

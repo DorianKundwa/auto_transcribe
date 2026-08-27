@@ -1850,6 +1850,37 @@ body {
   border-radius: 6px;
 }
 
+.record-review-actions {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  margin-top: .25rem;
+  flex-wrap: wrap;
+}
+
+.record-download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .35rem .65rem;
+  border-radius: 6px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-bright);
+  color: hsl(265 100% 88%);
+  font-size: .75rem;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all var(--t-fast);
+}
+
+.record-download-btn:hover {
+  background: hsl(265 80% 50% / .2);
+  border-color: hsl(265 70% 60% / .6);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
 .record-again-btn {
   display: inline-flex;
   align-items: center;
@@ -2025,16 +2056,40 @@ body {
   color: hsl(265 100% 88%);
 }
 
+.voice-card-top-actions {
+  display: flex;
+  align-items: center;
+  gap: .25rem;
+  margin-left: auto;
+}
+
+.voice-card-download-btn {
+  background: none;
+  border: none;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+  transition: all var(--t-fast);
+}
+
+.voice-card-download-btn:hover {
+  color: hsl(265 100% 88%);
+  background: hsl(265 80% 50% / .18);
+}
+
 .voice-card-delete-btn {
   background: none;
   border: none;
   color: var(--text-3);
   cursor: pointer;
-  padding: 3px;
+  padding: 4px;
   border-radius: 4px;
   display: flex;
   align-items: center;
-  margin-left: auto;
   transition: all var(--t-fast);
 }
 

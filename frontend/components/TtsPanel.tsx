@@ -17,6 +17,7 @@ import {
   Search,
   Check,
   RotateCcw,
+  Download,
   Loader2,
   Mic,
   Square,
@@ -303,7 +304,18 @@ export function TtsPanel({
       audioChunksRef.current = [];
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
+
+      let mimeType = '';
+      if (typeof MediaRecorder !== 'undefined') {
+        if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+          mimeType = 'audio/webm;codecs=opus';
+        } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+          mimeType = 'audio/webm';
+        } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+          mimeType = 'audio/mp4';
+        }
+      }
+      const mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = (e) => {
@@ -313,7 +325,8 @@ export function TtsPanel({
       };
 
       mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+        const actualMime = mediaRecorder.mimeType || 'audio/webm';
+        const audioBlob = new Blob(audioChunksRef.current, { type: actualMime });
         setRecordedBlob(audioBlob);
         const url = URL.createObjectURL(audioBlob);
         setRecordedAudioUrl(url);
@@ -950,15 +963,28 @@ export function TtsPanel({
                         <audio controls src={recordedAudioUrl} className="review-audio-player" />
                       )}
 
-                      <button
-                        type="button"
-                        className="record-again-btn"
-                        onClick={startRecording}
-                        disabled={isCloning}
-                      >
-                        <RotateCcw size={13} />
-                        Re-record Sample
-                      </button>
+                      <div className="record-review-actions">
+                        {recordedAudioUrl && (
+                          <a
+                            href={recordedAudioUrl}
+                            download={`recorded_voice_sample.${recordedBlob?.type.includes('mp4') ? 'mp4' : recordedBlob?.type.includes('wav') ? 'wav' : 'webm'}`}
+                            className="record-download-btn"
+                            title="Download this recording directly to your computer"
+                          >
+                            <Download size={13} />
+                            <span>Download Recording</span>
+                          </a>
+                        )}
+                        <button
+                          type="button"
+                          className="record-again-btn"
+                          onClick={startRecording}
+                          disabled={isCloning}
+                        >
+                          <RotateCcw size={13} />
+                          <span>Re-record</span>
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1170,14 +1196,25 @@ export function TtsPanel({
                         <span className="voice-card-meta">{v.lang} · {v.gender}</span>
                       </div>
                       {v.isCustom && (
-                        <button
-                          type="button"
-                          className="voice-card-delete-btn"
-                          onClick={(e) => handleDeleteVoice(v.id, e)}
-                          title="Delete this custom voice"
-                        >
-                          <Trash2 size={13} />
-                        </button>
+                        <div className="voice-card-top-actions">
+                          <a
+                            href={getCustomVoiceSampleUrl(v.id)}
+                            download={`${v.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_sample.wav`}
+                            className="voice-card-download-btn"
+                            title="Download reference audio sample (.wav)"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Download size={13} />
+                          </a>
+                          <button
+                            type="button"
+                            className="voice-card-delete-btn"
+                            onClick={(e) => handleDeleteVoice(v.id, e)}
+                            title="Delete this custom voice"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       )}
                     </div>
 
