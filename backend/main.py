@@ -23,7 +23,7 @@ import shutil
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 # Force HuggingFace and Torch to use local project storage
 os.environ["HF_HOME"] = str(Path(__file__).parent / "models" / "hf_cache")
@@ -102,6 +102,10 @@ class TtsPreviewRequest(BaseModel):
     speed: float = Field(1.0, ge=0.5, le=2.0, description="Speech speed factor")
     text: Optional[str] = Field(None, description="Optional preview text")
     dsp: Optional[Dict[str, Any]] = Field(None, description="Voicebox DSP FX & Delivery settings")
+
+
+TtsRequest.model_rebuild()
+TtsPreviewRequest.model_rebuild()
 
 
 # ---------------------------------------------------------------------------

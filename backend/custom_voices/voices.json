@@ -33,5 +33,57 @@
     ],
     "created_at": 1787852762.0596905,
     "is_custom": true
+  },
+  "custom_30e4195b": {
+    "id": "custom_30e4195b",
+    "name": "test",
+    "gender": "Male",
+    "lang": "American English",
+    "langCode": "a",
+    "flag": "✨",
+    "duration": 45.0,
+    "median_pitch": 107.3,
+    "f1": 397.0,
+    "f2": 1867.8,
+    "f3": 3086.9,
+    "spectral_centroid": 4060.3,
+    "warmth_score": 35.2,
+    "matched_anchors": [
+      {
+        "name": "am_puck",
+        "weight": 100.0
+      }
+    ],
+    "has_dvector": true,
+    "neural_encoder": "SV2TTS-3LSTM-GE2E",
+    "neural_dim": 256,
+    "created_at": 1787855261.8594868,
+    "is_custom": true
+  },
+  "custom_ec1f21b7": {
+    "id": "custom_ec1f21b7",
+    "name": "test",
+    "gender": "Male",
+    "lang": "American English",
+    "langCode": "a",
+    "flag": "✨",
+    "duration": 45.0,
+    "median_pitch": 107.3,
+    "f1": 397.0,
+    "f2": 1867.8,
+    "f3": 3086.9,
+    "spectral_centroid": 4060.3,
+    "warmth_score": 35.2,
+    "matched_anchors": [
+      {
+        "name": "am_puck",
+        "weight": 100.0
+      }
+    ],
+    "has_dvector": true,
+    "neural_encoder": "SV2TTS-3LSTM-GE2E",
+    "neural_dim": 256,
+    "created_at": 1787855269.816565,
+    "is_custom": true
   }
 }
