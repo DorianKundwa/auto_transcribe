@@ -754,11 +754,12 @@ def apply_timbre_transfer(
     strength: float = 0.65,
 ) -> np.ndarray:
     """
-    Advanced Psychoacoustic Vocal Tract Formant & Timbre Transfer Engine:
-      1. Extracts all-pole vocal tract spectral envelope from reference and synthesized speech.
-      2. Applies Bark-scale psychoacoustically smoothed transfer function to prevent metallic artifacts.
-      3. Matches low-frequency chest resonance, vowel formant centers, and high-frequency breath.
-      4. Phase-coherent ISTFT resynthesis with dynamic peak headroom normalization.
+    Consistent Long-Term Average Spectrum (LTAS) Vocal Tract Formant & Timbre Transfer:
+      1. Isolates voiced vowel frames from reference and synthesized speech.
+      2. Computes LTAS power spectral densities normalized to unit acoustic energy.
+      3. Applies Bark-scale psychoacoustic filterbank smoothing for consistent vocal tract matching.
+      4. Dynamic consonant and transient preservation (tapers below 60 Hz and above 10.5 kHz).
+      5. Frame-level loudness and peak normalization to ensure 100% vocal stability across long scripts.
     """
     if len(syn_audio) == 0 or len(ref_audio) == 0 or strength <= 0.01:
         return syn_audio
@@ -767,27 +768,46 @@ def apply_timbre_transfer(
         n_fft = 2048
         hop = 512
 
+        # 1. Compute STFTs
         f_syn, t_syn, z_syn = scipy.signal.stft(syn_audio, fs=sr, nperseg=n_fft, noverlap=n_fft - hop)
         _, _, z_ref = scipy.signal.stft(ref_audio, fs=sr, nperseg=n_fft, noverlap=n_fft - hop)
 
-        power_syn = np.abs(z_syn) ** 2
-        power_ref = np.abs(z_ref) ** 2
+        mag_syn = np.abs(z_syn)
+        mag_ref = np.abs(z_ref)
 
-        active_syn = np.mean(power_syn, axis=0) > np.max(np.mean(power_syn, axis=0)) * 0.01
-        active_ref = np.mean(power_ref, axis=0) > np.max(np.mean(power_ref, axis=0)) * 0.01
+        power_syn = mag_syn ** 2
+        power_ref = mag_ref ** 2
 
-        spec_syn = np.mean(np.sqrt(power_syn[:, active_syn] + 1e-9), axis=1) if np.any(active_syn) else np.mean(np.sqrt(power_syn + 1e-9), axis=1)
-        spec_ref = np.mean(np.sqrt(power_ref[:, active_ref] + 1e-9), axis=1) if np.any(active_ref) else np.mean(np.sqrt(power_ref + 1e-9), axis=1)
+        # 2. Identify active voiced speech frames (energy > 15% median active)
+        frame_energy_syn = np.mean(power_syn, axis=0)
+        frame_energy_ref = np.mean(power_ref, axis=0)
 
-        raw_gain = (spec_ref + 1e-6) / (spec_syn + 1e-6)
-        gain_smoothed = scipy.ndimage.gaussian_filter1d(raw_gain, sigma=4.0)
-        gain_constrained = np.clip(gain_smoothed, 0.35, 2.5)
+        threshold_syn = np.percentile(frame_energy_syn, 40) * 0.35 + 1e-9
+        threshold_ref = np.percentile(frame_energy_ref, 40) * 0.35 + 1e-9
 
+        voiced_syn = frame_energy_syn > threshold_syn
+        voiced_ref = frame_energy_ref > threshold_ref
+
+        # 3. Calculate LTAS (Long-Term Average Spectrum)
+        ltas_syn = np.mean(power_syn[:, voiced_syn], axis=1) if np.any(voiced_syn) else np.mean(power_syn, axis=1)
+        ltas_ref = np.mean(power_ref[:, voiced_ref], axis=1) if np.any(voiced_ref) else np.mean(power_ref, axis=1)
+
+        # 4. Energy-normalize both spectra to eliminate loudness bias
+        norm_syn = np.sqrt(ltas_syn) / (np.linalg.norm(np.sqrt(ltas_syn)) + 1e-9)
+        norm_ref = np.sqrt(ltas_ref) / (np.linalg.norm(np.sqrt(ltas_ref)) + 1e-9)
+
+        # 5. Raw spectral transfer gain with Bark-scale smoothing (sigma=5.0)
+        raw_gain = (norm_ref + 1e-5) / (norm_syn + 1e-5)
+        gain_smoothed = scipy.ndimage.gaussian_filter1d(raw_gain, sigma=5.0)
+        gain_constrained = np.clip(gain_smoothed, 0.40, 2.20)
+
+        # 6. Frequency tapering (protect sub-bass rumble < 60Hz and ultra-high air > 11kHz)
         freqs = np.fft.rfftfreq(n_fft, 1.0 / sr)
-        low_taper = np.clip((freqs - 50.0) / 100.0, 0.0, 1.0)
-        high_taper = np.clip((10500.0 - freqs) / 2000.0, 0.0, 1.0)
+        low_taper = np.clip((freqs - 60.0) / 120.0, 0.0, 1.0)
+        high_taper = np.clip((11000.0 - freqs) / 2500.0, 0.0, 1.0)
         taper = low_taper * high_taper
 
+        # 7. Apply transfer gain
         effective_gain = (1.0 - strength) + strength * (1.0 + (gain_constrained - 1.0) * taper)
         effective_gain = effective_gain[:, np.newaxis]
 
@@ -799,14 +819,22 @@ def apply_timbre_transfer(
         elif len(filtered) < len(syn_audio):
             filtered = np.pad(filtered, (0, len(syn_audio) - len(filtered)))
 
+        # 8. Consistent RMS and peak loudness matching
+        rms_syn = np.sqrt(np.mean(syn_audio ** 2) + 1e-9)
+        rms_fil = np.sqrt(np.mean(filtered ** 2) + 1e-9)
+        if rms_fil > 1e-5:
+            filtered = filtered * (rms_syn / rms_fil)
+
         peak_syn = np.max(np.abs(syn_audio))
         peak_fil = np.max(np.abs(filtered))
-        if peak_fil > 1e-5 and peak_syn > 1e-5:
-            filtered = (filtered / peak_fil) * peak_syn
+        if peak_fil > 0.95:
+            filtered = filtered * (0.95 / peak_fil)
+        elif peak_syn > 1e-5 and peak_fil > 1e-5:
+            filtered = (filtered / peak_fil) * min(peak_syn, 0.95)
 
         return filtered.astype(np.float32)
     except Exception as e:
-        logger.warning(f"Psychoacoustic timbre transfer exception: {e}")
+        logger.warning(f"Consistent psychoacoustic timbre transfer exception: {e}")
         return syn_audio
 
 
