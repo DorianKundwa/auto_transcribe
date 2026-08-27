@@ -50,8 +50,8 @@ if not exist "frontend\node_modules" (
     cd ..
 )
 
-for /f %%i in ('python -c "import socket; s=socket.socket(); s.bind(('', 0)); print(s.getsockname()[1]); s.close()"') do set BACKEND_PORT=%%i
-for /f %%i in ('python -c "import socket; s=socket.socket(); s.bind(('', 0)); print(s.getsockname()[1]); s.close()"') do set FRONTEND_PORT=%%i
+for /f %%i in ('backend\.venv\Scripts\python.exe -c "import socket; s=socket.socket(); s.bind(('', 0)); print(s.getsockname()[1]); s.close()"') do set BACKEND_PORT=%%i
+for /f %%i in ('backend\.venv\Scripts\python.exe -c "import socket; s=socket.socket(); s.bind(('', 0)); print(s.getsockname()[1]); s.close()"') do set FRONTEND_PORT=%%i
 
 echo.
 echo Starting Backend on http://localhost:%BACKEND_PORT% ...

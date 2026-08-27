@@ -27,15 +27,39 @@ class AutoTranscribeLauncher
         WriteInfo("Launching AutoTranscribe...");
         Console.WriteLine();
 
-        ProcessStartInfo psi;
+        bool useProd = false;
+        bool forceBat = false;
+        for (int i = 0; i < args.Length; i++)
+        {
+            string a = args[i].ToLowerInvariant();
+            if (a == "-prod" || a == "--prod") useProd = true;
+            if (a == "-dev" || a == "--dev") useProd = false;
+            if (a == "-bat" || a == "--bat") forceBat = true;
+        }
 
-        if (File.Exists(ps1Path))
+        ProcessStartInfo psi = null;
+
+        if (!forceBat && File.Exists(ps1Path))
         {
             string psExe = FindPowerShell() ?? "powershell.exe";
+            string psArgs = string.Format("-ExecutionPolicy Bypass -File \"{0}\"{1}", ps1Path, useProd ? " -Prod" : "");
             psi = new ProcessStartInfo
             {
                 FileName               = psExe,
-                Arguments              = string.Format("-ExecutionPolicy Bypass -File \"{0}\" -Prod", ps1Path),
+                Arguments              = psArgs,
+                WorkingDirectory       = exeDir,
+                UseShellExecute        = false,
+                RedirectStandardOutput = false,
+                RedirectStandardError  = false,
+                CreateNoWindow         = false,
+            };
+        }
+        else if (File.Exists(batPath))
+        {
+            psi = new ProcessStartInfo
+            {
+                FileName               = "cmd.exe",
+                Arguments              = string.Format("/c \"{0}\"", batPath),
                 WorkingDirectory       = exeDir,
                 UseShellExecute        = false,
                 RedirectStandardOutput = false,
@@ -45,7 +69,7 @@ class AutoTranscribeLauncher
         }
         else
         {
-            WriteError("start.ps1 not found in application folder.");
+            WriteError("Neither start.ps1 nor start.bat found in application folder.");
             Console.WriteLine();
             Pause();
             return;
