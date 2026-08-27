@@ -179,7 +179,13 @@ def _synthesize(
             "Run: pip install soundfile numpy"
         ) from exc
 
-    from .voicebox_dsp import parse_paralinguistic_tags, clean_script_for_tts, apply_voicebox_dsp
+    from .voicebox_dsp import (
+        parse_paralinguistic_tags,
+        clean_script_for_tts,
+        apply_voicebox_dsp,
+        generate_vocal_gesture,
+        apply_style_audio_modifier,
+    )
 
     pipeline = _get_kokoro_pipeline(lang_code)
     resolved_voice = _resolve_voice_tensor(pipeline, voice)
@@ -195,15 +201,24 @@ def _synthesize(
                     silence_samples = int(24000 * tok.get("duration", 0.5))
                     if silence_samples > 0:
                         audio_segments.append(np.zeros(silence_samples, dtype=np.float32))
+                elif tok["type"] == "gesture":
+                    g_audio = generate_vocal_gesture(tok.get("gesture", "sigh"), sr=24000)
+                    if len(g_audio) > 0:
+                        audio_segments.append(g_audio)
                 elif tok["type"] == "text":
                     sub_text = tok["text"]
                     if not sub_text.strip():
                         continue
+                    token_speed = speed * float(tok.get("speed_mult", 1.0))
+                    token_style = tok.get("style")
                     chunks: list[Any] = []
-                    for _gs, _ps, audio in pipeline(sub_text, voice=resolved_voice, speed=speed):
+                    for _gs, _ps, audio in pipeline(sub_text, voice=resolved_voice, speed=token_speed):
                         chunks.append(audio)
                     if chunks:
-                        audio_segments.append(np.concatenate(chunks, axis=0))
+                        sub_audio = np.concatenate(chunks, axis=0)
+                        if token_style:
+                            sub_audio = apply_style_audio_modifier(sub_audio, style=token_style, sr=24000)
+                        audio_segments.append(sub_audio)
     except Exception as exc:
         err_str = str(exc).lower()
         if "espeak" in err_str or "phonemizer" in err_str:
@@ -271,7 +286,12 @@ def synthesize_preview(
             "Missing 'soundfile' or 'numpy'. Run: pip install soundfile numpy"
         ) from exc
 
-    from .voicebox_dsp import parse_paralinguistic_tags, apply_voicebox_dsp
+    from .voicebox_dsp import (
+        parse_paralinguistic_tags,
+        apply_voicebox_dsp,
+        generate_vocal_gesture,
+        apply_style_audio_modifier,
+    )
 
     pipeline = _get_kokoro_pipeline(lang_code)
     resolved_voice = _resolve_voice_tensor(pipeline, voice)
@@ -287,15 +307,24 @@ def synthesize_preview(
                     silence_samples = int(24000 * tok.get("duration", 0.5))
                     if silence_samples > 0:
                         audio_segments.append(np.zeros(silence_samples, dtype=np.float32))
+                elif tok["type"] == "gesture":
+                    g_audio = generate_vocal_gesture(tok.get("gesture", "sigh"), sr=24000)
+                    if len(g_audio) > 0:
+                        audio_segments.append(g_audio)
                 elif tok["type"] == "text":
                     sub_text = tok["text"]
                     if not sub_text.strip():
                         continue
+                    token_speed = speed * float(tok.get("speed_mult", 1.0))
+                    token_style = tok.get("style")
                     chunks: list[Any] = []
-                    for _gs, _ps, audio in pipeline(sub_text, voice=resolved_voice, speed=speed):
+                    for _gs, _ps, audio in pipeline(sub_text, voice=resolved_voice, speed=token_speed):
                         chunks.append(audio)
                     if chunks:
-                        audio_segments.append(np.concatenate(chunks, axis=0))
+                        sub_audio = np.concatenate(chunks, axis=0)
+                        if token_style:
+                            sub_audio = apply_style_audio_modifier(sub_audio, style=token_style, sr=24000)
+                        audio_segments.append(sub_audio)
     except Exception as exc:
         err_str = str(exc).lower()
         if "espeak" in err_str or "phonemizer" in err_str:

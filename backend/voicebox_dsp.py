@@ -32,62 +32,208 @@ SR_DEFAULT = 24000
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # 1. Paralinguistic & Expressive Speech Tag Parser
 # ---------------------------------------------------------------------------
 
-TAG_PATTERN = re.compile(
-    r"\[(pause(?::[\d.]+(?:s|ms)?)?|laugh|sigh|gasp|whisper|emphasis|shout|happy|sad|excited)\]",
+BLOCK_TAGS = {"whisper", "emphasis", "shout", "fast", "slow", "happy", "sad", "excited"}
+GESTURE_TAGS = {"sigh", "laugh", "gasp", "cough", "throat-clearing"}
+
+TAG_RE = re.compile(
+    r"\[(/?)(pause(?::|=)?[\d.]+(?:s|ms)?|pause|whisper|emphasis|shout|fast|slow|happy|sad|excited|sigh|laugh|gasp|cough|throat-clearing)\]",
     re.IGNORECASE,
 )
 
 
 def parse_paralinguistic_tags(text: str) -> List[Dict[str, Any]]:
     """
-    Parse paralinguistic emotion and timing tags from script.
-    Examples:
-      - "Hello [pause:0.5s] world" -> [{'type': 'text', 'text': 'Hello'}, {'type': 'pause', 'duration': 0.5}, {'type': 'text', 'text': 'world'}]
-      - "That was hilarious [laugh]" -> [{'type': 'text', 'text': 'That was hilarious'}, {'type': 'tag', 'tag': 'laugh'}]
+    Parse paralinguistic emotion, style modifiers, gestures, and timing tags from script.
+    Supports both block tags ([whisper]...[/whisper]) and standalone inline tags ([pause=0.5s], [sigh], [laugh]).
+    
+    Returns a list of token dicts:
+      - {"type": "text", "text": "...", "style": None|"whisper"|"emphasis"|"shout", "speed_mult": 1.0}
+      - {"type": "pause", "duration": 0.5}
+      - {"type": "gesture", "gesture": "sigh"|"laugh"|"gasp"}
     """
     tokens: List[Dict[str, Any]] = []
-    last_idx = 0
+    active_style: Optional[str] = None
+    active_speed_mult: float = 1.0
 
-    for match in TAG_PATTERN.finditer(text):
+    last_idx = 0
+    for match in TAG_RE.finditer(text):
         start, end = match.span()
         if start > last_idx:
-            segment = text[last_idx:start].strip()
-            if segment:
-                tokens.append({"type": "text", "text": segment})
+            segment = text[last_idx:start]
+            if segment.strip():
+                tokens.append({
+                    "type": "text",
+                    "text": segment,
+                    "style": active_style,
+                    "speed_mult": active_speed_mult,
+                })
 
-        tag_content = match.group(1).lower()
-        if tag_content.startswith("pause"):
+        is_closing = match.group(1) == "/"
+        raw_tag = match.group(2).lower()
+
+        if is_closing:
+            if raw_tag in BLOCK_TAGS:
+                active_style = None
+                active_speed_mult = 1.0
+        elif raw_tag.startswith("pause"):
             dur = 0.5
-            if ":" in tag_content:
-                val_str = tag_content.split(":", 1)[1]
-                if val_str.endswith("ms"):
-                    dur = float(val_str[:-2]) / 1000.0
-                elif val_str.endswith("s"):
-                    dur = float(val_str[:-1])
+            # extract value if provided e.g. pause:0.5s or pause=1.0s or pause=300ms
+            m = re.search(r"[\d.]+", raw_tag)
+            if m:
+                val = float(m.group(0))
+                if "ms" in raw_tag:
+                    dur = val / 1000.0
                 else:
-                    dur = float(val_str)
-            tokens.append({"type": "pause", "duration": min(max(dur, 0.1), 5.0)})
-        else:
-            tokens.append({"type": "tag", "tag": tag_content})
+                    dur = val
+            tokens.append({"type": "pause", "duration": min(max(dur, 0.05), 5.0)})
+        elif raw_tag in GESTURE_TAGS:
+            tokens.append({"type": "gesture", "gesture": raw_tag})
+        elif raw_tag in BLOCK_TAGS:
+            active_style = raw_tag
+            if raw_tag == "fast":
+                active_speed_mult = 1.25
+            elif raw_tag == "slow":
+                active_speed_mult = 0.80
+            elif raw_tag == "whisper":
+                active_speed_mult = 0.95
+            elif raw_tag == "emphasis":
+                active_speed_mult = 0.90
+            elif raw_tag == "shout":
+                active_speed_mult = 1.05
 
         last_idx = end
 
     if last_idx < len(text):
-        segment = text[last_idx:].strip()
-        if segment:
-            tokens.append({"type": "text", "text": segment})
+        segment = text[last_idx:]
+        if segment.strip():
+            tokens.append({
+                "type": "text",
+                "text": segment,
+                "style": active_style,
+                "speed_mult": active_speed_mult,
+            })
 
-    return tokens if tokens else [{"type": "text", "text": text}]
+    return tokens if tokens else [{"type": "text", "text": text, "style": None, "speed_mult": 1.0}]
 
 
 def clean_script_for_tts(text: str) -> str:
-    """Strip bracketed paralinguistic tags for basic phonemizers while preserving pauses."""
-    cleaned = re.sub(TAG_PATTERN, " ", text)
+    """Strip bracketed paralinguistic tags for plain text display."""
+    cleaned = re.sub(TAG_RE, " ", text)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned
+
+
+def generate_vocal_gesture(gesture: str, sr: int = 24000) -> np.ndarray:
+    """
+    Generate natural acoustic vocal gestures (sigh, gasp, laugh chuckle, cough).
+    Synthesizes smooth formant-filtered pink/brown noise breath envelopes.
+    """
+    gesture = gesture.lower().strip()
+
+    if gesture == "sigh":
+        # 0.45s breathy exhalation with decaying pitch and high-pass air
+        dur = 0.45
+        n_samples = int(sr * dur)
+        t = np.linspace(0, 1, n_samples)
+        # Pink noise base
+        white = np.random.randn(n_samples).astype(np.float32)
+        # Formant filter around 800Hz - 2200Hz
+        sos = scipy.signal.butter(2, [600 / (sr / 2), 2400 / (sr / 2)], 'bandpass', output='sos')
+        filtered = scipy.signal.sosfilt(sos, white)
+        # Exhale amplitude envelope: quick attack, smooth exponential decay
+        envelope = np.sin(np.pi * np.clip(t * 1.5, 0, 1)) * np.exp(-3.5 * t)
+        out = filtered * envelope * 0.18
+        return out.astype(np.float32)
+
+    elif gesture == "gasp":
+        # 0.28s sharp breath inhalation with rising pitch and presence
+        dur = 0.28
+        n_samples = int(sr * dur)
+        t = np.linspace(0, 1, n_samples)
+        white = np.random.randn(n_samples).astype(np.float32)
+        sos = scipy.signal.butter(2, [1000 / (sr / 2), 3500 / (sr / 2)], 'bandpass', output='sos')
+        filtered = scipy.signal.sosfilt(sos, white)
+        # Inhale amplitude envelope: slow start, rapid crescendo, sharp cutoff
+        envelope = (t ** 2.2) * (1.0 - np.exp(-15.0 * (1.0 - t)))
+        out = filtered * envelope * 0.22
+        return out.astype(np.float32)
+
+    elif gesture == "laugh":
+        # 0.55s light vocal chuckle (3 rhythmic breath/vowel bursts)
+        dur = 0.55
+        n_samples = int(sr * dur)
+        t = np.linspace(0, dur, n_samples)
+        # 3 pulses at ~6Hz
+        pulse_env = np.maximum(0, np.sin(2 * np.pi * 5.5 * t)) ** 2
+        decay = np.exp(-2.2 * t)
+        white = np.random.randn(n_samples).astype(np.float32)
+        sos = scipy.signal.butter(2, [450 / (sr / 2), 2800 / (sr / 2)], 'bandpass', output='sos')
+        filtered = scipy.signal.sosfilt(sos, white)
+        # Add subtle harmonic warmth for vocal cord vibration (F0 ~ 180Hz)
+        f0 = 180.0
+        tone = 0.35 * np.sin(2 * np.pi * f0 * t) + 0.15 * np.sin(2 * np.pi * 2 * f0 * t)
+        blended = (filtered * 0.65 + tone * 0.35) * pulse_env * decay * 0.20
+        return blended.astype(np.float32)
+
+    elif gesture == "cough":
+        # 0.35s twin-burst throat cough
+        dur = 0.35
+        n_samples = int(sr * dur)
+        t = np.linspace(0, dur, n_samples)
+        pulse = (np.exp(-40.0 * (t - 0.05)**2) * 0.9 + np.exp(-35.0 * (t - 0.18)**2) * 0.6)
+        white = np.random.randn(n_samples).astype(np.float32)
+        sos = scipy.signal.butter(2, [300 / (sr / 2), 3000 / (sr / 2)], 'bandpass', output='sos')
+        out = scipy.signal.sosfilt(sos, white) * pulse * 0.25
+        return out.astype(np.float32)
+
+    else:
+        # Default subtle breath pause (0.2s)
+        return np.zeros(int(sr * 0.2), dtype=np.float32)
+
+
+def apply_style_audio_modifier(audio: np.ndarray, style: Optional[str], sr: int = 24000) -> np.ndarray:
+    """
+    Apply style-specific audio DSP transformation when a block style tag is active.
+    """
+    if not style or len(audio) == 0:
+        return audio
+
+    style = style.lower().strip()
+
+    if style == "whisper":
+        # Soft breathy high-pass tilt, dip low frequencies, boost 7kHz air, reduce RMS
+        out = apply_parametric_eq(audio, sr=sr, warmth_gain_db=-6.0, presence_gain_db=-2.0, air_gain_db=4.5)
+        # Attenuate overall volume
+        return (out * 0.70).astype(np.float32)
+
+    elif style == "emphasis":
+        # Boost mid presence (+3dB @ 2.5kHz) and light dynamic punch
+        out = apply_parametric_eq(audio, sr=sr, warmth_gain_db=1.0, presence_gain_db=3.5, air_gain_db=1.5)
+        out = apply_studio_compressor(out, sr=sr, threshold_db=-16.0, ratio=4.0, makeup_gain_db=2.0)
+        return out.astype(np.float32)
+
+    elif style == "shout":
+        # High dynamic energy, +3.5dB gain, presence drive
+        out = apply_parametric_eq(audio, sr=sr, warmth_gain_db=2.0, presence_gain_db=4.0, air_gain_db=2.0)
+        out = apply_studio_compressor(out, sr=sr, threshold_db=-14.0, ratio=5.0, makeup_gain_db=3.5)
+        return out.astype(np.float32)
+
+    elif style == "happy" or style == "excited":
+        # Bright high shelf, slight pitch lift
+        out = apply_parametric_eq(audio, sr=sr, warmth_gain_db=0.5, presence_gain_db=2.0, air_gain_db=3.0)
+        return out.astype(np.float32)
+
+    elif style == "sad":
+        # Warm, slightly muted high-end, relaxed presence
+        out = apply_parametric_eq(audio, sr=sr, warmth_gain_db=2.5, presence_gain_db=-2.5, air_gain_db=-3.0)
+        return (out * 0.85).astype(np.float32)
+
+    return audio
+
 
 
 # ---------------------------------------------------------------------------

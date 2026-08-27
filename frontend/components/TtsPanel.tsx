@@ -320,11 +320,15 @@ export function TtsPanel({
       );
       const activeLangCode = targetVoiceObj?.langCode || settings.langCode || 'a';
 
+      const previewText = script.trim()
+        ? script.trim().slice(0, 180)
+        : 'Hello! This is a voice preview with Voicebox studio effects.';
+
       const url = await previewTtsVoice(
         target,
         activeLangCode,
         settings.speed,
-        'Hello! This is a voice preview with Voicebox studio effects.',
+        previewText,
         settings.dsp,
       );
 
@@ -624,10 +628,13 @@ export function TtsPanel({
             { tag: '[pause:0.5s]', label: '⏱️ Pause 0.5s' },
             { tag: '[pause:1.0s]', label: '⏱️ Pause 1.0s' },
             { tag: '[whisper]', label: '🤫 Whisper' },
-            { tag: '[laugh]', label: '😂 Laugh' },
-            { tag: '[sigh]', label: '😮‍💨 Sigh' },
-            { tag: '[gasp]', label: '😲 Gasp' },
             { tag: '[emphasis]', label: '🔥 Emphasis' },
+            { tag: '[shout]', label: '🗣️ Shout' },
+            { tag: '[sigh]', label: '😮‍💨 Sigh' },
+            { tag: '[laugh]', label: '😂 Laugh' },
+            { tag: '[gasp]', label: '😲 Gasp' },
+            { tag: '[fast]', label: '⚡ Fast' },
+            { tag: '[slow]', label: '🐢 Slow' },
           ].map((t) => (
             <button
               key={t.tag}
