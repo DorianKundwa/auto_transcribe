@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { TtsSettings, VoiceBlendItem, ModelOption, DeviceOption, CustomVoice } from '@/lib/types';
+import { TtsSettings, VoiceBlendItem, ModelOption, DeviceOption, CustomVoice, VoiceboxDspSettings } from '@/lib/types';
 import { previewTtsVoice, fetchCustomVoices, cloneVoice, deleteCustomVoice, getCustomVoiceSampleUrl } from '@/lib/api';
 import {
   Sparkles,
@@ -27,6 +27,7 @@ import {
   Info,
   CheckCircle2,
   AlertCircle,
+  Wand2,
 } from 'lucide-react';
 
 export interface KokoroVoiceOption {
@@ -243,6 +244,48 @@ export function TtsPanel({
     }
   };
 
+  const [showVoiceboxStudio, setShowVoiceboxStudio] = useState(true);
+
+  const currentDsp: VoiceboxDspSettings = settings.dsp || {
+    deliveryPreset: 'studio_neutral',
+    warmth: 0,
+    clarity: 0,
+    pitchShift: 0,
+    reverb: 0,
+    compression: false,
+  };
+
+  const handleUpdateDsp = (updates: Partial<VoiceboxDspSettings>) => {
+    onSettingsChange({
+      dsp: {
+        ...currentDsp,
+        ...updates,
+      },
+    });
+  };
+
+  const handleInsertTag = (tag: string) => {
+    const textarea = document.getElementById('script-textarea') as HTMLTextAreaElement | null;
+    if (!textarea) {
+      onScriptChange(script + (script.length > 0 && !script.endsWith(' ') ? ' ' : '') + tag);
+      return;
+    }
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const before = script.substring(0, start);
+    const after = script.substring(end);
+    const needsLeadingSpace = start > 0 && !before.endsWith(' ') && !before.endsWith('\n');
+    const needsTrailingSpace = after.length > 0 && !after.startsWith(' ') && !after.startsWith('\n');
+    const inserted = `${needsLeadingSpace ? ' ' : ''}${tag}${needsTrailingSpace ? ' ' : ''}`;
+    const newScript = `${before}${inserted}${after}`;
+    onScriptChange(newScript);
+    setTimeout(() => {
+      textarea.focus();
+      const newPos = start + inserted.length;
+      textarea.setSelectionRange(newPos, newPos);
+    }, 15);
+  };
+
   const handlePlayPreview = async (voiceTarget?: string | VoiceBlendItem[]) => {
     try {
       if (previewAudioRef.current && isPlayingPreview) {
@@ -271,7 +314,8 @@ export function TtsPanel({
         target,
         activeLangCode,
         settings.speed,
-        'Hello! This is a voice preview for AutoTranscribe.',
+        'Hello! This is a voice preview with Voicebox studio effects.',
+        settings.dsp,
       );
 
       if (previewAudioRef.current) {
@@ -495,6 +539,31 @@ export function TtsPanel({
           onChange={(e) => onScriptChange(e.target.value)}
           disabled={disabled}
         />
+
+        {/* Paralinguistic Expression Tags Bar */}
+        <div className="paralinguistic-tags-bar">
+          <span className="paralinguistic-title">Voicebox Tags:</span>
+          {[
+            { tag: '[pause:0.5s]', label: '⏱️ Pause 0.5s' },
+            { tag: '[pause:1.0s]', label: '⏱️ Pause 1.0s' },
+            { tag: '[whisper]', label: '🤫 Whisper' },
+            { tag: '[laugh]', label: '😂 Laugh' },
+            { tag: '[sigh]', label: '😮‍💨 Sigh' },
+            { tag: '[gasp]', label: '😲 Gasp' },
+            { tag: '[emphasis]', label: '🔥 Emphasis' },
+          ].map((t) => (
+            <button
+              key={t.tag}
+              type="button"
+              className="paralinguistic-tag-btn"
+              onClick={() => handleInsertTag(t.tag)}
+              title={`Insert ${t.tag} at cursor`}
+              disabled={disabled}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
 
         <div className="script-meta">
           <span>{wordCount} words · {charCount} chars</span>
@@ -787,6 +856,135 @@ export function TtsPanel({
           <span>1.0× (normal)</span>
           <span>2.0× (fast)</span>
         </p>
+      </div>
+
+      {/* ------------------------------------------------------------- */}
+      {/* VOICEBOX STUDIO AUDIO FX & DELIVERY CONTROLS */}
+      {/* ------------------------------------------------------------- */}
+      <div className="voicebox-studio-box">
+        <div className="voicebox-studio-header" onClick={() => setShowVoiceboxStudio(!showVoiceboxStudio)}>
+          <div className="voicebox-studio-title">
+            <Wand2 size={15} className="text-accent" />
+            <span>Voicebox Studio FX & Delivery</span>
+            <span className="voicebox-badge">Voicebox OS</span>
+          </div>
+          <button type="button" className="voicebox-toggle-btn">
+            {showVoiceboxStudio ? 'Hide FX Rack' : 'Open FX Rack'}
+          </button>
+        </div>
+
+        {showVoiceboxStudio && (
+          <div className="voicebox-studio-body">
+            {/* Delivery Preset Selector */}
+            <div className="setting-group">
+              <label className="setting-label">Delivery Style Preset</label>
+              <div className="delivery-presets-grid">
+                {[
+                  { id: 'studio_neutral', label: 'Studio Neutral', icon: '🎙️', desc: 'Clean & transparent' },
+                  { id: 'broadcast_warmth', label: 'Broadcast Warmth', icon: '📻', desc: 'Deep proximity warmth' },
+                  { id: 'podcast_clarity', label: 'Podcast Crisp', icon: '✨', desc: 'Enhanced air & presence' },
+                  { id: 'cinematic_narrator', label: 'Cinematic Narrator', icon: '🎬', desc: 'Deep resonant room' },
+                  { id: 'soft_whisper', label: 'Soft Whisper', icon: '🤫', desc: 'Intimate soft delivery' },
+                  { id: 'high_energy', label: 'High Energy', icon: '⚡', desc: 'Forward punchy attack' },
+                ].map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={`delivery-preset-card ${(settings.dsp?.deliveryPreset || 'studio_neutral') === p.id ? 'active' : ''}`}
+                    onClick={() => handleUpdateDsp({ deliveryPreset: p.id as any })}
+                  >
+                    <span className="preset-card-icon">{p.icon}</span>
+                    <span className="preset-card-title">{p.label}</span>
+                    <span className="preset-card-desc">{p.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Studio FX Sliders */}
+            <div className="voicebox-sliders-grid">
+              {/* Vocal Warmth */}
+              <div className="voicebox-slider-group">
+                <div className="slider-label-row">
+                  <span>Vocal Warmth</span>
+                  <span className="slider-val">{(settings.dsp?.warmth || 0) > 0 ? `+${settings.dsp?.warmth || 0}` : settings.dsp?.warmth || 0}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="-100"
+                  max="100"
+                  step="5"
+                  value={settings.dsp?.warmth || 0}
+                  onChange={(e) => handleUpdateDsp({ warmth: parseFloat(e.target.value) })}
+                  className="setting-range"
+                />
+              </div>
+
+              {/* Clarity & Air */}
+              <div className="voicebox-slider-group">
+                <div className="slider-label-row">
+                  <span>Clarity & Air</span>
+                  <span className="slider-val">{(settings.dsp?.clarity || 0) > 0 ? `+${settings.dsp?.clarity || 0}` : settings.dsp?.clarity || 0}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="-100"
+                  max="100"
+                  step="5"
+                  value={settings.dsp?.clarity || 0}
+                  onChange={(e) => handleUpdateDsp({ clarity: parseFloat(e.target.value) })}
+                  className="setting-range"
+                />
+              </div>
+
+              {/* Pitch Transpose */}
+              <div className="voicebox-slider-group">
+                <div className="slider-label-row">
+                  <span>Pitch Shift</span>
+                  <span className="slider-val">{(settings.dsp?.pitchShift || 0) > 0 ? `+${settings.dsp?.pitchShift || 0}` : settings.dsp?.pitchShift || 0} st</span>
+                </div>
+                <input
+                  type="range"
+                  min="-6"
+                  max="6"
+                  step="0.5"
+                  value={settings.dsp?.pitchShift || 0}
+                  onChange={(e) => handleUpdateDsp({ pitchShift: parseFloat(e.target.value) })}
+                  className="setting-range"
+                />
+              </div>
+
+              {/* Studio Reverb */}
+              <div className="voicebox-slider-group">
+                <div className="slider-label-row">
+                  <span>Studio Reverb</span>
+                  <span className="slider-val">{settings.dsp?.reverb || 0}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="5"
+                  value={settings.dsp?.reverb || 0}
+                  onChange={(e) => handleUpdateDsp({ reverb: parseFloat(e.target.value) })}
+                  className="setting-range"
+                />
+              </div>
+            </div>
+
+            {/* Broadcast Compressor Toggle */}
+            <div className="voicebox-toggle-row">
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={settings.dsp?.compression ?? false}
+                  onChange={(e) => handleUpdateDsp({ compression: e.target.checked })}
+                />
+                <span>Broadcast Dynamic Compressor & Peak Limiter</span>
+              </label>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Advanced Alignment Settings Toggle */}

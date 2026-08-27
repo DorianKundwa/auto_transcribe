@@ -164,10 +164,11 @@ def _synthesize(
     lang_code: str,
     speed: float,
     output_path: str,
+    dsp_settings: Optional[Dict[str, Any]] = None,
 ) -> None:
     """
-    Run Kokoro synthesis synchronously and write a 24 kHz WAV file.
-    Supports single voices, custom cloned voices, and multi-voice blends.
+    Run Kokoro synthesis synchronously, apply Voicebox DSP effects, and write a 24 kHz WAV file.
+    Supports single voices, custom cloned voices, multi-voice blends, and paralinguistic tags.
     """
     try:
         import soundfile as sf  # type: ignore
@@ -178,15 +179,31 @@ def _synthesize(
             "Run: pip install soundfile numpy"
         ) from exc
 
+    from .voicebox_dsp import parse_paralinguistic_tags, clean_script_for_tts, apply_voicebox_dsp
+
     pipeline = _get_kokoro_pipeline(lang_code)
     resolved_voice = _resolve_voice_tensor(pipeline, voice)
 
-    chunks: list[Any] = []
+    parsed_tokens = parse_paralinguistic_tags(script)
+    audio_segments: list[np.ndarray] = []
+
     try:
         import torch
         with torch.inference_mode():
-            for _gs, _ps, audio in pipeline(script, voice=resolved_voice, speed=speed):
-                chunks.append(audio)
+            for tok in parsed_tokens:
+                if tok["type"] == "pause":
+                    silence_samples = int(24000 * tok.get("duration", 0.5))
+                    if silence_samples > 0:
+                        audio_segments.append(np.zeros(silence_samples, dtype=np.float32))
+                elif tok["type"] == "text":
+                    sub_text = tok["text"]
+                    if not sub_text.strip():
+                        continue
+                    chunks: list[Any] = []
+                    for _gs, _ps, audio in pipeline(sub_text, voice=resolved_voice, speed=speed):
+                        chunks.append(audio)
+                    if chunks:
+                        audio_segments.append(np.concatenate(chunks, axis=0))
     except Exception as exc:
         err_str = str(exc).lower()
         if "espeak" in err_str or "phonemizer" in err_str:
@@ -200,10 +217,10 @@ def _synthesize(
             ) from exc
         raise
 
-    if not chunks:
+    if not audio_segments:
         raise RuntimeError("Kokoro produced no audio output for the given script.")
 
-    audio_np = np.concatenate(chunks, axis=0)
+    audio_np = np.concatenate(audio_segments, axis=0)
 
     # If this is a custom cloned voice, apply subtle timbre transfer from reference sample
     custom_id = _extract_custom_voice_id(voice)
@@ -219,6 +236,22 @@ def _synthesize(
         except Exception as e:
             logger.warning(f"Could not apply timbre transfer for {custom_id}: {e}")
 
+    # Apply Voicebox Studio DSP FX (EQ, Compression, Reverb, Pitch)
+    if dsp_settings:
+        try:
+            audio_np = apply_voicebox_dsp(
+                audio_np,
+                sr=24000,
+                preset=dsp_settings.get("delivery_preset", "studio_neutral"),
+                warmth=float(dsp_settings.get("warmth", 0.0)),
+                clarity=float(dsp_settings.get("clarity", 0.0)),
+                pitch_shift=float(dsp_settings.get("pitch_shift", 0.0)),
+                reverb=float(dsp_settings.get("reverb", 0.0)),
+                compression=dsp_settings.get("compression"),
+            )
+        except Exception as e:
+            logger.warning(f"Could not apply Voicebox DSP effects: {e}")
+
     sf.write(output_path, audio_np, 24000)
     logger.info("TTS WAV written to %s (%.1f s)", output_path, len(audio_np) / 24000)
 
@@ -228,10 +261,11 @@ def synthesize_preview(
     lang_code: str = "a",
     speed: float = 1.0,
     text: Optional[str] = None,
+    dsp_settings: Optional[Dict[str, Any]] = None,
 ) -> bytes:
     """
     Fast audio preview generator for a single voice, custom voice, or voice blend.
-    Returns in-memory WAV audio bytes.
+    Returns in-memory WAV audio bytes with optional Voicebox DSP.
     """
     sample_text = (
         text.strip()
@@ -239,7 +273,7 @@ def synthesize_preview(
         else "Hello! This is a preview of the selected Kokoro voice."
     )
     
-    cache_key = f"{voice}|{lang_code}|{speed}|{sample_text}"
+    cache_key = f"{voice}|{lang_code}|{speed}|{sample_text}|{dsp_settings}"
     if cache_key in _preview_cache:
         return _preview_cache[cache_key]
 
@@ -251,15 +285,31 @@ def synthesize_preview(
             "Missing 'soundfile' or 'numpy'. Run: pip install soundfile numpy"
         ) from exc
 
+    from .voicebox_dsp import parse_paralinguistic_tags, apply_voicebox_dsp
+
     pipeline = _get_kokoro_pipeline(lang_code)
     resolved_voice = _resolve_voice_tensor(pipeline, voice)
 
-    chunks: list[Any] = []
+    parsed_tokens = parse_paralinguistic_tags(sample_text)
+    audio_segments: list[np.ndarray] = []
+
     try:
         import torch
         with torch.inference_mode():
-            for _gs, _ps, audio in pipeline(sample_text, voice=resolved_voice, speed=speed):
-                chunks.append(audio)
+            for tok in parsed_tokens:
+                if tok["type"] == "pause":
+                    silence_samples = int(24000 * tok.get("duration", 0.5))
+                    if silence_samples > 0:
+                        audio_segments.append(np.zeros(silence_samples, dtype=np.float32))
+                elif tok["type"] == "text":
+                    sub_text = tok["text"]
+                    if not sub_text.strip():
+                        continue
+                    chunks: list[Any] = []
+                    for _gs, _ps, audio in pipeline(sub_text, voice=resolved_voice, speed=speed):
+                        chunks.append(audio)
+                    if chunks:
+                        audio_segments.append(np.concatenate(chunks, axis=0))
     except Exception as exc:
         err_str = str(exc).lower()
         if "espeak" in err_str or "phonemizer" in err_str:
@@ -269,10 +319,10 @@ def synthesize_preview(
             ) from exc
         raise
 
-    if not chunks:
+    if not audio_segments:
         raise RuntimeError("Failed to synthesize preview audio.")
 
-    audio_np = np.concatenate(chunks, axis=0)
+    audio_np = np.concatenate(audio_segments, axis=0)
 
     # If this is a custom cloned voice, apply subtle timbre transfer
     custom_id = _extract_custom_voice_id(voice)
@@ -287,6 +337,22 @@ def synthesize_preview(
                 audio_np = apply_timbre_transfer(audio_np, ref_audio, sr=24000, strength=0.65)
         except Exception as e:
             logger.warning(f"Could not apply preview timbre transfer for {custom_id}: {e}")
+
+    # Apply Voicebox DSP effects if provided
+    if dsp_settings:
+        try:
+            audio_np = apply_voicebox_dsp(
+                audio_np,
+                sr=24000,
+                preset=dsp_settings.get("delivery_preset", "studio_neutral"),
+                warmth=float(dsp_settings.get("warmth", 0.0)),
+                clarity=float(dsp_settings.get("clarity", 0.0)),
+                pitch_shift=float(dsp_settings.get("pitch_shift", 0.0)),
+                reverb=float(dsp_settings.get("reverb", 0.0)),
+                compression=dsp_settings.get("compression"),
+            )
+        except Exception as e:
+            logger.warning(f"Could not apply Voicebox DSP effects: {e}")
 
     buf = io.BytesIO()
     sf.write(buf, audio_np, 24000, format="WAV")
@@ -309,18 +375,11 @@ async def run_tts_and_transcribe(
     model_name: str = "base",
     device_req: str = "auto",
     pause_threshold: float = 0.75,
+    dsp_settings: Optional[Dict[str, Any]] = None,
     progress_cb: Optional[Callable[[str, int], None]] = None,
 ) -> dict[str, Any]:
     """
-    Full TTS + timestamp pipeline supporting voice blending.
-
-    Progress stages:
-      generating_audio   0 → 40
-      loading_model     40 → 50
-      transcribing      50 → 65
-      aligning          65 → 85
-      segmenting        85 → 95
-      complete          95 → 100
+    Full TTS + timestamp pipeline supporting voice blending and Voicebox DSP FX.
     """
     from .transcribe import run_transcription
 
@@ -337,7 +396,7 @@ async def run_tts_and_transcribe(
     wav_path = str(TTS_DIR / wav_filename)
 
     logger.info("Starting Kokoro TTS synthesis (speed=%.1f) …", speed)
-    await asyncio.to_thread(_synthesize, script, voice, lang_code, speed, wav_path)
+    await asyncio.to_thread(_synthesize, script, voice, lang_code, speed, wav_path, dsp_settings)
     emit("generating_audio", 40)
 
     # 2. WhisperX transcription + alignment

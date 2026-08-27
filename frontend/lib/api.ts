@@ -1,4 +1,4 @@
-import { ProgressEvent, TranscriptResult, Segment, TranscribeSettings, TtsSettings, VoiceBlendItem, CustomVoice } from './types';
+import { ProgressEvent, TranscriptResult, Segment, TranscribeSettings, TtsSettings, VoiceBlendItem, CustomVoice, VoiceboxDspSettings } from './types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:8000';
 
@@ -53,6 +53,16 @@ export async function submitTTS(
       model: settings.model,
       device: settings.device,
       pause_threshold: settings.pauseThreshold,
+      dsp: settings.dsp
+        ? {
+            delivery_preset: settings.dsp.deliveryPreset,
+            warmth: settings.dsp.warmth,
+            clarity: settings.dsp.clarity,
+            pitch_shift: settings.dsp.pitchShift,
+            reverb: settings.dsp.reverb,
+            compression: settings.dsp.compression,
+          }
+        : undefined,
     }),
   });
 
@@ -70,6 +80,7 @@ export async function previewTtsVoice(
   langCode: string,
   speed = 1.0,
   text?: string,
+  dsp?: VoiceboxDspSettings,
 ): Promise<string> {
   const res = await fetch(`${API_BASE}/api/tts/preview`, {
     method: 'POST',
@@ -81,6 +92,16 @@ export async function previewTtsVoice(
       lang_code: langCode,
       speed,
       text,
+      dsp: dsp
+        ? {
+            delivery_preset: dsp.deliveryPreset,
+            warmth: dsp.warmth,
+            clarity: dsp.clarity,
+            pitch_shift: dsp.pitchShift,
+            reverb: dsp.reverb,
+            compression: dsp.compression,
+          }
+        : undefined,
     }),
   });
 

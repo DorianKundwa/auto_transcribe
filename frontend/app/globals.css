@@ -2211,3 +2211,203 @@ body {
   color: var(--text-3);
 }
 
+/* =========================================================================
+   VOICEBOX STUDIO & PARALINGUISTIC DSP STYLES
+   ========================================================================= */
+
+/* Paralinguistic Expression Tags Bar */
+.paralinguistic-tags-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .35rem;
+  margin-top: .45rem;
+  padding: .35rem .5rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.paralinguistic-title {
+  font-size: .68rem;
+  font-weight: 700;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  margin-right: .2rem;
+}
+
+.paralinguistic-tag-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .25rem;
+  padding: 2px 7px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: .72rem;
+  font-weight: 600;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: all var(--t-fast);
+}
+
+.paralinguistic-tag-btn:hover {
+  background: hsl(205 80% 50% / .15);
+  border-color: hsl(205 80% 55% / .4);
+  color: hsl(205 100% 80%);
+  transform: translateY(-1px);
+}
+
+/* Voicebox Studio FX Box */
+.voicebox-studio-box {
+  margin-top: .75rem;
+  background: linear-gradient(135deg, hsl(230 40% 12% / .6) 0%, hsl(265 40% 10% / .5) 100%);
+  border: 1px solid hsl(230 60% 50% / .25);
+  border-radius: 12px;
+  padding: .85rem 1rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  animation: fadeIn 0.25s ease-out;
+}
+
+.voicebox-studio-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+}
+
+.voicebox-studio-title {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  font-size: .84rem;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: .3px;
+}
+
+.voicebox-badge {
+  font-size: .62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, hsl(205 90% 55%) 0%, hsl(265 90% 60%) 100%);
+  color: #fff;
+  letter-spacing: .4px;
+}
+
+.voicebox-toggle-btn {
+  background: none;
+  border: none;
+  color: var(--text-3);
+  font-size: .75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color var(--t-fast);
+}
+
+.voicebox-toggle-btn:hover {
+  color: var(--text);
+}
+
+.voicebox-studio-body {
+  margin-top: .85rem;
+  display: flex;
+  flex-direction: column;
+  gap: .85rem;
+  border-top: 1px solid hsl(230 50% 50% / .15);
+  padding-top: .85rem;
+}
+
+/* Delivery Presets Grid */
+.delivery-presets-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: .5rem;
+  margin-top: .35rem;
+}
+
+.delivery-preset-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: .15rem;
+  padding: .55rem .65rem;
+  background: hsl(0 0% 0% / .25);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all var(--t-fast);
+  text-align: left;
+}
+
+.delivery-preset-card:hover {
+  background: hsl(230 50% 40% / .15);
+  border-color: hsl(230 60% 55% / .4);
+}
+
+.delivery-preset-card.active {
+  background: linear-gradient(135deg, hsl(230 70% 35% / .4) 0%, hsl(265 70% 35% / .3) 100%);
+  border-color: hsl(230 80% 60% / .7);
+  box-shadow: 0 0 12px hsl(230 80% 60% / .2);
+}
+
+.preset-card-icon {
+  font-size: 1rem;
+  margin-bottom: 2px;
+}
+
+.preset-card-title {
+  font-size: .75rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.preset-card-desc {
+  font-size: .62rem;
+  color: var(--text-3);
+  line-height: 1.25;
+}
+
+/* Voicebox Sliders */
+.voicebox-sliders-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .75rem;
+}
+
+.voicebox-slider-group {
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+  background: hsl(0 0% 0% / .2);
+  padding: .5rem .65rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.slider-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: .72rem;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.slider-val {
+  font-size: .72rem;
+  font-weight: 700;
+  color: hsl(205 100% 80%);
+}
+
+.voicebox-toggle-row {
+  padding: .4rem .5rem;
+  background: hsl(0 0% 0% / .2);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+

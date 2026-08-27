@@ -52,6 +52,15 @@ export interface VoiceBlendItem {
   weight: number; // e.g. 50 (percentage or ratio)
 }
 
+export interface VoiceboxDspSettings {
+  deliveryPreset: 'studio_neutral' | 'broadcast_warmth' | 'podcast_clarity' | 'cinematic_narrator' | 'soft_whisper' | 'high_energy';
+  warmth: number;       // -100 to 100
+  clarity: number;      // -100 to 100
+  pitchShift: number;   // -6 to +6 semitones
+  reverb: number;       // 0 to 100
+  compression: boolean;
+}
+
 export interface TtsSettings {
   mode: 'single' | 'blend';
   voice: string;                  // active single voice ID
@@ -61,6 +70,7 @@ export interface TtsSettings {
   model: ModelOption;
   device: DeviceOption;
   pauseThreshold: number;
+  dsp?: VoiceboxDspSettings;
 }
 
 export type AppMode = 'transcribe' | 'tts';

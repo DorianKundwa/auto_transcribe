@@ -93,6 +93,7 @@ class TtsRequest(BaseModel):
     model: str = Field("base", description="WhisperX model size")
     device: str = Field("auto", description="Compute device: auto, cuda, or cpu")
     pause_threshold: float = Field(0.75, ge=0.1, le=5.0, description="Sentence pause threshold in seconds")
+    dsp: Optional[Dict[str, Any]] = Field(None, description="Voicebox DSP FX & Delivery settings")
 
 
 class TtsPreviewRequest(BaseModel):
@@ -100,14 +101,21 @@ class TtsPreviewRequest(BaseModel):
     lang_code: str = Field("a", description="Kokoro language code")
     speed: float = Field(1.0, ge=0.5, le=2.0, description="Speech speed factor")
     text: Optional[str] = Field(None, description="Optional preview text")
+    dsp: Optional[Dict[str, Any]] = Field(None, description="Voicebox DSP FX & Delivery settings")
 
 
 # ---------------------------------------------------------------------------
-# Health check
+# Health check & Presets
 # ---------------------------------------------------------------------------
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/api/tts/presets")
+async def get_tts_delivery_presets():
+    from .voicebox_dsp import DELIVERY_PRESETS
+    return JSONResponse(content=DELIVERY_PRESETS)
 
 
 # ---------------------------------------------------------------------------
@@ -180,6 +188,7 @@ async def create_tts_job(
         model_name=request.model,
         device_req=request.device,
         pause_threshold=request.pause_threshold,
+        dsp_settings=request.dsp,
     )
 
     return {"job_id": job_id}
@@ -198,6 +207,7 @@ async def preview_tts_voice(request: TtsPreviewRequest):
             lang_code=request.lang_code,
             speed=request.speed,
             text=request.text,
+            dsp_settings=request.dsp,
         )
         return Response(content=audio_bytes, media_type="audio/wav")
     except Exception as exc:
@@ -387,6 +397,7 @@ async def _run_tts_job(
     model_name: str,
     device_req: str,
     pause_threshold: float,
+    dsp_settings: Optional[Dict[str, Any]] = None,
 ) -> None:
     job = _jobs.get(job_id)
     if not job:
@@ -414,6 +425,7 @@ async def _run_tts_job(
             model_name=model_name,
             device_req=device_req,
             pause_threshold=pause_threshold,
+            dsp_settings=dsp_settings,
             progress_cb=progress_cb,
         )
         job["status"] = "complete"
