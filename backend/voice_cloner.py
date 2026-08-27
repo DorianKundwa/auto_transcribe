@@ -77,6 +77,11 @@ def _load_audio_any_format(
     raw_bytes: bytes
     if isinstance(file_source, (bytes, bytearray)):
         raw_bytes = bytes(file_source)
+    elif isinstance(file_source, np.ndarray):
+        data = file_source.astype(np.float32)
+        if data.ndim > 1:
+            data = np.mean(data, axis=1)
+        return data, target_sr
     elif isinstance(file_source, io.BytesIO):
         file_source.seek(0)
         raw_bytes = file_source.read()

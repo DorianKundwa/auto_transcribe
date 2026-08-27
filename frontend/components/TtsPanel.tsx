@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { TtsSettings, VoiceBlendItem, ModelOption, DeviceOption, CustomVoice, VoiceboxDspSettings } from '@/lib/types';
-import { previewTtsVoice, fetchCustomVoices, cloneVoice, deleteCustomVoice, getCustomVoiceSampleUrl } from '@/lib/api';
+import { TtsSettings, VoiceBlendItem, ModelOption, DeviceOption, CustomVoice, VoiceboxDspSettings, TrainingProgressEvent } from '@/lib/types';
+import { previewTtsVoice, fetchCustomVoices, cloneVoice, deleteCustomVoice, getCustomVoiceSampleUrl, startVoiceTraining, subscribeVoiceTrainingProgress } from '@/lib/api';
 import {
   Sparkles,
   Trash2,
@@ -28,6 +28,10 @@ import {
   CheckCircle2,
   AlertCircle,
   Wand2,
+  Cpu,
+  Zap,
+  Activity,
+  Gauge,
 } from 'lucide-react';
 
 export interface KokoroVoiceOption {
@@ -181,6 +185,12 @@ export function TtsPanel({
   const [cloneError, setCloneError] = useState<string | null>(null);
   const [cloneSuccess, setCloneSuccess] = useState<string | null>(null);
   const [lastClonedVoice, setLastClonedVoice] = useState<CustomVoice | null>(null);
+
+  // Enhanced Deep Neural Voice Training state
+  const [trainingMode, setTrainingMode] = useState<'deep' | 'quick'>('deep');
+  const [trainingEpochs, setTrainingEpochs] = useState(100);
+  const [isTraining, setIsTraining] = useState(false);
+  const [trainingEvent, setTrainingEvent] = useState<TrainingProgressEvent | null>(null);
 
   // Audio recording state
   const [isRecording, setIsRecording] = useState(false);
@@ -440,6 +450,73 @@ export function TtsPanel({
       setCloneError(err.message || 'Voice cloning failed.');
     } finally {
       setIsCloning(false);
+    }
+  };
+
+  const handleStartTraining = async () => {
+    const audioData = cloneMode === 'record' ? recordedBlob : uploadedFile;
+    if (!audioData) {
+      setCloneError('Please record your voice or select an audio file first.');
+      return;
+    }
+
+    const nameToUse = cloneName.trim() || 'My Trained Voice';
+    const epochsToRun = trainingMode === 'deep' ? 100 : 20;
+
+    try {
+      setIsTraining(true);
+      setCloneError(null);
+      setCloneSuccess(null);
+      setTrainingEvent({
+        stage: 'profiling',
+        pct: 5,
+        epoch: 0,
+        total_epochs: epochsToRun,
+        message: 'Initializing multi-stage deep neural training pipeline…',
+        speaker_similarity: 60.0,
+        formant_alignment: 50.0,
+      });
+
+      const jobId = await startVoiceTraining(
+        audioData,
+        nameToUse,
+        cloneGender,
+        cloneLangCode,
+        epochsToRun,
+      );
+
+      const unsubscribe = subscribeVoiceTrainingProgress(
+        jobId,
+        async (evt) => {
+          setTrainingEvent(evt);
+          if (evt.stage === 'complete') {
+            setIsTraining(false);
+            if (evt.voice_record) {
+              setLastClonedVoice(evt.voice_record);
+              setCloneSuccess(`Neural voice "${evt.voice_record.name}" successfully trained in ${epochsToRun} epochs!`);
+              await refreshCustomVoices();
+              onSettingsChange({
+                voice: evt.voice_record.id,
+                langCode: evt.voice_record.langCode,
+              });
+              setTimeout(() => {
+                handlePlayPreview(evt.voice_record!.id);
+              }, 600);
+            }
+          } else if (evt.stage === 'error') {
+            setIsTraining(false);
+            setCloneError(evt.error || 'Deep neural voice training failed.');
+          }
+        },
+        (err) => {
+          setIsTraining(false);
+          setCloneError(err.message || 'Training connection interrupted.');
+        }
+      );
+    } catch (err: any) {
+      console.error('Training failed:', err);
+      setIsTraining(false);
+      setCloneError(err.message || 'Could not start training.');
     }
   };
 
@@ -1272,6 +1349,103 @@ export function TtsPanel({
                 </div>
               </div>
 
+              {/* Training Mode Selector */}
+              <div className="setting-group">
+                <label className="setting-label">Training & Optimization Engine</label>
+                <div className="training-mode-grid">
+                  <div
+                    className={`training-mode-card ${trainingMode === 'deep' ? 'active' : ''}`}
+                    onClick={() => !isTraining && !isCloning && setTrainingMode('deep')}
+                  >
+                    <div className="training-mode-icon-title">
+                      <Cpu size={15} className="text-accent" />
+                      <span className="training-card-title">🧠 Deep Neural Training (100 Epochs)</span>
+                      <span className="training-badge-rec">Recommended</span>
+                    </div>
+                    <p className="training-card-desc">
+                      Multi-stage PyTorch AdamW gradient optimization. Thoroughly studies vocal tract formants (F1–F4), glottal resonance, and 256-D d-vectors for near-perfect speaker likeness.
+                    </p>
+                  </div>
+
+                  <div
+                    className={`training-mode-card ${trainingMode === 'quick' ? 'active' : ''}`}
+                    onClick={() => !isTraining && !isCloning && setTrainingMode('quick')}
+                  >
+                    <div className="training-mode-icon-title">
+                      <Zap size={15} className="text-warning" />
+                      <span className="training-card-title">⚡ Quick Calibration (20 Epochs)</span>
+                    </div>
+                    <p className="training-card-desc">
+                      Fast 20-epoch acoustic fitting. Suitable for rapid sketches.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Live Deep Training Telemetry Dashboard */}
+              {isTraining && trainingEvent && (
+                <div className="live-training-dashboard">
+                  <div className="training-dashboard-header">
+                    <div className="training-pulse-dot" />
+                    <span className="training-dash-title">
+                      {trainingMode === 'deep' ? 'Deep Neural Model Training in Progress' : 'Quick Voice Calibration in Progress'}
+                    </span>
+                    <span className="training-epoch-badge">
+                      Epoch {trainingEvent.epoch || 0} / {trainingEvent.total_epochs || (trainingMode === 'deep' ? 100 : 20)}
+                    </span>
+                  </div>
+
+                  {/* Progress Bar */}
+                  <div className="training-progress-container">
+                    <div className="training-bar-track">
+                      <div
+                        className="training-bar-fill"
+                        style={{ width: `${trainingEvent.pct}%` }}
+                      />
+                    </div>
+                    <div className="training-pct-text">{trainingEvent.pct}% Complete</div>
+                  </div>
+
+                  {/* Telemetry Metrics Grid */}
+                  <div className="telemetry-metrics-grid">
+                    <div className="telemetry-card">
+                      <div className="telemetry-label">
+                        <Activity size={12} />
+                        <span>Speaker Similarity</span>
+                      </div>
+                      <div className="telemetry-value text-accent">
+                        {trainingEvent.speaker_similarity?.toFixed(1) || '60.0'}%
+                      </div>
+                    </div>
+
+                    <div className="telemetry-card">
+                      <div className="telemetry-label">
+                        <Gauge size={12} />
+                        <span>Formant Alignment</span>
+                      </div>
+                      <div className="telemetry-value text-success">
+                        {trainingEvent.formant_alignment?.toFixed(1) || '50.0'}%
+                      </div>
+                    </div>
+
+                    <div className="telemetry-card">
+                      <div className="telemetry-label">
+                        <Cpu size={12} />
+                        <span>Optimization Loss</span>
+                      </div>
+                      <div className="telemetry-value text-warning">
+                        {trainingEvent.loss !== undefined ? trainingEvent.loss.toFixed(4) : '0.0000'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="training-status-msg">
+                    <Loader2 size={12} className="spin" />
+                    <span>{trainingEvent.message || 'Optimizing latent style tensor…'}</span>
+                  </p>
+                </div>
+              )}
+
               {/* Feedback messages */}
               {cloneError && (
                 <div className="clone-alert error">
@@ -1292,9 +1466,17 @@ export function TtsPanel({
                 <div className="clone-analysis-card">
                   <div className="analysis-card-header">
                     <Sparkles size={14} className="text-accent" />
-                    <span className="analysis-title">SV2TTS Neural Manifold Fitting Results</span>
+                    <span className="analysis-title">
+                      {lastClonedVoice.training_epochs ? `🧠 ${lastClonedVoice.training_epochs}-Epoch Deep Trained Voice Profile` : 'SV2TTS Neural Manifold Fitting Results'}
+                    </span>
                   </div>
                   <div className="analysis-grid">
+                    <div className="analysis-item">
+                      <span className="analysis-label">Speaker Similarity</span>
+                      <span className="analysis-val text-accent">
+                        {lastClonedVoice.speaker_similarity ? `${lastClonedVoice.speaker_similarity}% Match` : 'High'}
+                      </span>
+                    </div>
                     <div className="analysis-item">
                       <span className="analysis-label">Median Pitch (F0)</span>
                       <span className="analysis-val">{lastClonedVoice.median_pitch ? `${lastClonedVoice.median_pitch} Hz` : 'Calculated'}</span>
@@ -1304,12 +1486,10 @@ export function TtsPanel({
                       <span className="analysis-val">256-D d-Vector</span>
                     </div>
                     <div className="analysis-item">
-                      <span className="analysis-label">Vocal Warmth</span>
-                      <span className="analysis-val">{lastClonedVoice.warmth_score ? `${lastClonedVoice.warmth_score}%` : 'Optimal'}</span>
-                    </div>
-                    <div className="analysis-item">
-                      <span className="analysis-label">Speaker Verification</span>
-                      <span className="analysis-val">GE2E 3-LSTM</span>
+                      <span className="analysis-label">Formant Alignment</span>
+                      <span className="analysis-val text-success">
+                        {lastClonedVoice.formant_alignment ? `${lastClonedVoice.formant_alignment}%` : 'Optimal'}
+                      </span>
                     </div>
                     {lastClonedVoice.matched_anchors && lastClonedVoice.matched_anchors.length > 0 && (
                       <div className="analysis-item full-width">
@@ -1333,7 +1513,7 @@ export function TtsPanel({
                 type="button"
                 className="script-btn-secondary"
                 onClick={() => setShowCloneStudio(false)}
-                disabled={isCloning}
+                disabled={isCloning || isTraining}
               >
                 Cancel
               </button>
@@ -1341,18 +1521,18 @@ export function TtsPanel({
               <button
                 type="button"
                 className="clone-submit-btn"
-                onClick={handleCloneSubmit}
-                disabled={isCloning || (cloneMode === 'record' ? !recordedBlob : !uploadedFile)}
+                onClick={handleStartTraining}
+                disabled={isCloning || isTraining || (cloneMode === 'record' ? !recordedBlob : !uploadedFile)}
               >
-                {isCloning ? (
+                {isTraining || isCloning ? (
                   <>
                     <Loader2 size={15} className="spin" />
-                    <span>Extracting Acoustics & Synthesizing Model…</span>
+                    <span>Training Neural Voice Model ({trainingEvent?.pct || 0}%)…</span>
                   </>
                 ) : (
                   <>
                     <Sparkles size={15} />
-                    <span>Clone & Save Voice</span>
+                    <span>{trainingMode === 'deep' ? 'Start Deep Neural Training (100 Epochs)' : 'Start Quick Calibration'}</span>
                   </>
                 )}
               </button>

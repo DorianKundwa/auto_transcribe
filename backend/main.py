@@ -248,6 +248,96 @@ async def clone_voice_endpoint(
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+async def _run_voice_training_job(
+    job_id: str,
+    audio_bytes: bytes,
+    name: str,
+    gender: Optional[str],
+    lang_code: str,
+    epochs: int,
+) -> None:
+    job = _jobs.get(job_id)
+    if not job:
+        return
+
+    def progress_cb(info: Dict[str, Any]) -> None:
+        job["stage"] = info.get("stage", "optimizing")
+        job["pct"] = info.get("pct", 0)
+        try:
+            job["events"].put_nowait(info)
+        except Exception:
+            pass
+
+    job["status"] = "running"
+
+    try:
+        from .voice_trainer import train_voice_model
+
+        voice_record = await asyncio.to_thread(
+            train_voice_model,
+            audio_source=audio_bytes,
+            name=name,
+            gender=gender,
+            lang_code=lang_code,
+            epochs=epochs,
+            progress_cb=progress_cb,
+        )
+        job["status"] = "complete"
+        job["result"] = voice_record
+        job["pct"] = 100
+        job["stage"] = "complete"
+        try:
+            job["events"].put_nowait({
+                "stage": "complete",
+                "pct": 100,
+                "voice_record": voice_record,
+                "message": "Training complete!",
+            })
+        except Exception:
+            pass
+    except Exception as exc:
+        logger.exception("Voice training job %s failed", job_id)
+        job["status"] = "error"
+        job["error"] = str(exc)
+        try:
+            job["events"].put_nowait({"stage": "error", "pct": 0, "error": str(exc)})
+        except Exception:
+            pass
+
+
+@app.post("/api/voices/train")
+async def start_voice_training_endpoint(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    name: str = Form("My Cloned Voice"),
+    gender: Optional[str] = Form(None),
+    lang_code: str = Form("a"),
+    epochs: int = Form(100),
+):
+    """
+    Start multi-stage iterative deep neural voice training (100 Epochs).
+    Returns job_id for real-time SSE telemetry tracking.
+    """
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty audio file provided.")
+
+    job_id = str(uuid.uuid4())
+    job = _new_job(job_id, job_type="voice_train")
+    _jobs[job_id] = job
+
+    background_tasks.add_task(
+        _run_voice_training_job,
+        job_id=job_id,
+        audio_bytes=content,
+        name=name,
+        gender=gender if gender and gender != "auto" else None,
+        lang_code=lang_code,
+        epochs=max(10, min(250, epochs)),
+    )
+    return {"job_id": job_id}
+
+
 @app.get("/api/voices/custom")
 async def get_custom_voices_endpoint():
     from .voice_cloner import list_custom_voices

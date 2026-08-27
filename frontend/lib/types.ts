@@ -99,7 +99,27 @@ export interface CustomVoice {
   has_dvector?: boolean;
   neural_encoder?: string;
   neural_dim?: number;
+  training_epochs?: number;
+  final_loss?: number;
+  speaker_similarity?: number;
+  formant_alignment?: number;
+  training_mode?: string;
   created_at: number;
   is_custom: boolean;
 }
+
+export interface TrainingProgressEvent {
+  stage: 'profiling' | 'optimizing' | 'finalizing' | 'complete' | 'error';
+  pct: number;
+  epoch?: number;
+  total_epochs?: number;
+  loss?: number;
+  speaker_similarity?: number;
+  formant_alignment?: number;
+  message?: string;
+  voice_id?: string;
+  voice_record?: CustomVoice;
+  error?: string;
+}
+
 

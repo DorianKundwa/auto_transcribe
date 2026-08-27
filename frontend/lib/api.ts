@@ -1,4 +1,4 @@
-import { ProgressEvent, TranscriptResult, Segment, TranscribeSettings, TtsSettings, VoiceBlendItem, CustomVoice, VoiceboxDspSettings } from './types';
+import { ProgressEvent, TranscriptResult, Segment, TranscribeSettings, TtsSettings, VoiceBlendItem, CustomVoice, VoiceboxDspSettings, TrainingProgressEvent } from './types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:8000';
 
@@ -292,4 +292,61 @@ export async function verifyVoiceSimilarity(
 
   return await res.json();
 }
+
+export async function startVoiceTraining(
+  fileOrBlob: Blob | File,
+  name: string,
+  gender?: string,
+  langCode: string = 'a',
+  epochs: number = 100,
+): Promise<string> {
+  const form = new FormData();
+  const filename = (fileOrBlob as File).name || 'training_voice.webm';
+  form.append('file', fileOrBlob, filename);
+  form.append('name', name);
+  if (gender) form.append('gender', gender);
+  form.append('lang_code', langCode);
+  form.append('epochs', String(epochs));
+
+  const res = await fetch(`${API_BASE}/api/voices/train`, {
+    method: 'POST',
+    body: form,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail ?? 'Failed to start voice training');
+  }
+
+  const data = await res.json();
+  return data.job_id;
+}
+
+export function subscribeVoiceTrainingProgress(
+  jobId: string,
+  onEvent: (evt: TrainingProgressEvent) => void,
+  onError?: (err: Error) => void,
+): () => void {
+  const es = new EventSource(`${API_BASE}/api/progress/${jobId}`);
+
+  es.onmessage = (e) => {
+    try {
+      const evt: TrainingProgressEvent = JSON.parse(e.data);
+      onEvent(evt);
+      if (evt.stage === 'complete' || evt.stage === 'error') {
+        es.close();
+      }
+    } catch {
+      // ignore parse errors
+    }
+  };
+
+  es.onerror = () => {
+    es.close();
+    onError?.(new Error('Training SSE stream disconnected'));
+  };
+
+  return () => es.close();
+}
+
 

@@ -2411,3 +2411,192 @@ body {
   border: 1px solid var(--border);
 }
 
+/* =========================================================================
+   ENHANCED DEEP NEURAL VOICE TRAINING STUDIO STYLES
+   ========================================================================= */
+
+/* Training Mode Selector */
+.training-mode-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .65rem;
+  margin-top: .35rem;
+}
+
+.training-mode-card {
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+  padding: .75rem .85rem;
+  background: hsl(0 0% 0% / .25);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all var(--t-fast);
+  text-align: left;
+}
+
+.training-mode-card:hover {
+  background: hsl(265 50% 40% / .12);
+  border-color: hsl(265 70% 60% / .4);
+}
+
+.training-mode-card.active {
+  background: linear-gradient(135deg, hsl(265 70% 30% / .45) 0%, hsl(205 70% 30% / .35) 100%);
+  border-color: hsl(265 80% 65% / .8);
+  box-shadow: 0 0 16px hsl(265 80% 65% / .25);
+}
+
+.training-mode-icon-title {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+}
+
+.training-card-title {
+  font-size: .8rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.training-badge-rec {
+  margin-left: auto;
+  font-size: .58rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, hsl(150 80% 40%) 0%, hsl(170 80% 45%) 100%);
+  color: #fff;
+}
+
+.training-card-desc {
+  font-size: .67rem;
+  color: var(--text-3);
+  line-height: 1.35;
+}
+
+/* Live Deep Training Telemetry Dashboard */
+.live-training-dashboard {
+  background: linear-gradient(135deg, hsl(265 40% 12% / .9) 0%, hsl(230 40% 10% / .9) 100%);
+  border: 1px solid hsl(265 80% 65% / .4);
+  border-radius: 12px;
+  padding: 1rem 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: .8rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  animation: fadeIn 0.3s ease-out;
+}
+
+.training-dashboard-header {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+.training-pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: hsl(150 100% 50%);
+  box-shadow: 0 0 8px hsl(150 100% 50%);
+  animation: pulseDot 1.4s ease-in-out infinite;
+}
+
+@keyframes pulseDot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.4); opacity: 0.6; }
+}
+
+.training-dash-title {
+  font-size: .84rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.training-epoch-badge {
+  margin-left: auto;
+  font-size: .72rem;
+  font-weight: 700;
+  color: hsl(265 100% 88%);
+  background: hsl(265 80% 50% / .25);
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid hsl(265 80% 65% / .4);
+}
+
+/* Progress Bar */
+.training-progress-container {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+}
+
+.training-bar-track {
+  flex: 1;
+  height: 8px;
+  background: hsl(0 0% 0% / .4);
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.training-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, hsl(265 90% 60%) 0%, hsl(205 90% 55%) 50%, hsl(150 90% 50%) 100%);
+  border-radius: 4px;
+  transition: width 0.3s ease-out;
+  box-shadow: 0 0 10px hsl(265 90% 60% / .5);
+}
+
+.training-pct-text {
+  font-size: .75rem;
+  font-weight: 700;
+  color: #fff;
+  min-width: 80px;
+  text-align: right;
+}
+
+/* Telemetry Metrics */
+.telemetry-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: .5rem;
+}
+
+.telemetry-card {
+  background: hsl(0 0% 0% / .3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: .5rem .65rem;
+  display: flex;
+  flex-direction: column;
+  gap: .2rem;
+}
+
+.telemetry-label {
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+  font-size: .65rem;
+  color: var(--text-3);
+  font-weight: 600;
+}
+
+.telemetry-value {
+  font-size: .95rem;
+  font-weight: 800;
+  letter-spacing: .2px;
+}
+
+.training-status-msg {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  font-size: .73rem;
+  color: var(--text-2);
+  margin: 0;
+}
+
