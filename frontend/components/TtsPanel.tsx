@@ -179,6 +179,7 @@ export function TtsPanel({
   const [isCloning, setIsCloning] = useState(false);
   const [cloneError, setCloneError] = useState<string | null>(null);
   const [cloneSuccess, setCloneSuccess] = useState<string | null>(null);
+  const [lastClonedVoice, setLastClonedVoice] = useState<CustomVoice | null>(null);
 
   // Audio recording state
   const [isRecording, setIsRecording] = useState(false);
@@ -376,7 +377,8 @@ export function TtsPanel({
         cloneLangCode,
       );
 
-      setCloneSuccess(`Voice "${newVoice.name}" cloned successfully!`);
+      setLastClonedVoice(newVoice);
+      setCloneSuccess(`Voice "${newVoice.name}" cloned & optimized successfully!`);
       await refreshCustomVoices();
 
       // Automatically select newly cloned voice
@@ -385,12 +387,10 @@ export function TtsPanel({
         langCode: newVoice.langCode,
       });
 
-      // Close studio after 1.2s and test preview
+      // Preview synthesized voice
       setTimeout(() => {
-        setShowCloneStudio(false);
-        setCloneSuccess(null);
         handlePlayPreview(newVoice.id);
-      }, 1200);
+      }, 600);
     } catch (err: any) {
       console.error('Cloning failed:', err);
       setCloneError(err.message || 'Voice cloning failed.');
@@ -1088,6 +1088,38 @@ export function TtsPanel({
                   <span>{cloneSuccess}</span>
                 </div>
               )}
+
+              {/* Acoustic Analysis & Manifold Fitting Insights Card */}
+              {lastClonedVoice && (
+                <div className="clone-analysis-card">
+                  <div className="analysis-card-header">
+                    <Sparkles size={14} className="text-accent" />
+                    <span className="analysis-title">Acoustic Manifold Fitting Results</span>
+                  </div>
+                  <div className="analysis-grid">
+                    <div className="analysis-item">
+                      <span className="analysis-label">Median Pitch (F0)</span>
+                      <span className="analysis-val">{lastClonedVoice.median_pitch ? `${lastClonedVoice.median_pitch} Hz` : 'Calculated'}</span>
+                    </div>
+                    <div className="analysis-item">
+                      <span className="analysis-label">Vocal Warmth</span>
+                      <span className="analysis-val">{lastClonedVoice.warmth_score ? `${lastClonedVoice.warmth_score}%` : 'Optimal'}</span>
+                    </div>
+                    {lastClonedVoice.matched_anchors && lastClonedVoice.matched_anchors.length > 0 && (
+                      <div className="analysis-item full-width">
+                        <span className="analysis-label">Optimized Anchor Voice Projection</span>
+                        <div className="anchor-tags-row">
+                          {lastClonedVoice.matched_anchors.slice(0, 3).map((a) => (
+                            <span key={a.name} className="anchor-tag">
+                              {a.name.replace(/^(af_|am_|bf_|bm_|ef_|em_|ff_|hf_|hm_|if_|im_|pf_|pm_)/, '')} · {a.weight}%
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="voice-modal-footer">
@@ -1193,7 +1225,12 @@ export function TtsPanel({
                             <span className="custom-voice-pill">Cloned</span>
                           )}
                         </div>
-                        <span className="voice-card-meta">{v.lang} · {v.gender}</span>
+                        <span className="voice-card-meta">
+                          {v.lang} · {v.gender}
+                          {v.isCustom && customVoices.find((cv) => cv.id === v.id)?.median_pitch
+                            ? ` · ${customVoices.find((cv) => cv.id === v.id)?.median_pitch} Hz`
+                            : ''}
+                        </span>
                       </div>
                       {v.isCustom && (
                         <div className="voice-card-top-actions">

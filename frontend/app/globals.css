@@ -2001,6 +2001,81 @@ body {
   color: hsl(150 90% 75%);
 }
 
+/* Acoustic Analysis Card */
+.clone-analysis-card {
+  margin-top: .75rem;
+  padding: .85rem 1rem;
+  border-radius: 10px;
+  background: linear-gradient(135deg, hsl(265 60% 15% / .5) 0%, hsl(265 40% 10% / .4) 100%);
+  border: 1px solid hsl(265 70% 60% / .3);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  animation: fadeIn 0.25s ease-out;
+}
+
+.analysis-card-header {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  margin-bottom: .6rem;
+  font-size: .8rem;
+  font-weight: 700;
+  color: hsl(265 100% 90%);
+  letter-spacing: .3px;
+}
+
+.analysis-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .6rem;
+}
+
+.analysis-item {
+  display: flex;
+  flex-direction: column;
+  gap: .15rem;
+  background: hsl(0 0% 0% / .2);
+  padding: .45rem .65rem;
+  border-radius: 6px;
+  border: 1px solid hsl(265 50% 50% / .15);
+}
+
+.analysis-item.full-width {
+  grid-column: 1 / -1;
+}
+
+.analysis-label {
+  font-size: .68rem;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  font-weight: 600;
+}
+
+.analysis-val {
+  font-size: .85rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.anchor-tags-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+  margin-top: .25rem;
+}
+
+.anchor-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: hsl(265 80% 50% / .25);
+  border: 1px solid hsl(265 70% 60% / .4);
+  font-size: .72rem;
+  font-weight: 600;
+  color: hsl(265 100% 88%);
+}
+
 .clone-submit-btn {
   display: inline-flex;
   align-items: center;

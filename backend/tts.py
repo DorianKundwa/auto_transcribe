@@ -215,7 +215,7 @@ def _synthesize(
                 ref_audio, _ = sf.read(sample_p, dtype="float32")
                 if ref_audio.ndim > 1:
                     ref_audio = np.mean(ref_audio, axis=1)
-                audio_np = apply_timbre_transfer(audio_np, ref_audio, sr=24000, strength=0.50)
+                audio_np = apply_timbre_transfer(audio_np, ref_audio, sr=24000, strength=0.65)
         except Exception as e:
             logger.warning(f"Could not apply timbre transfer for {custom_id}: {e}")
 
@@ -284,7 +284,7 @@ def synthesize_preview(
                 ref_audio, _ = sf.read(sample_p, dtype="float32")
                 if ref_audio.ndim > 1:
                     ref_audio = np.mean(ref_audio, axis=1)
-                audio_np = apply_timbre_transfer(audio_np, ref_audio, sr=24000, strength=0.50)
+                audio_np = apply_timbre_transfer(audio_np, ref_audio, sr=24000, strength=0.65)
         except Exception as e:
             logger.warning(f"Could not apply preview timbre transfer for {custom_id}: {e}")
 

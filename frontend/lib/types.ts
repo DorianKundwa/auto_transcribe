@@ -80,6 +80,12 @@ export interface CustomVoice {
   flag: string;
   duration: number;
   median_pitch?: number;
+  f1?: number;
+  f2?: number;
+  f3?: number;
+  spectral_centroid?: number;
+  warmth_score?: number;
+  matched_anchors?: Array<{ name: string; weight: number }>;
   created_at: number;
   is_custom: boolean;
 }
