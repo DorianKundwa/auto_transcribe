@@ -1491,18 +1491,12 @@ export function TtsPanel({
                         {lastClonedVoice.formant_alignment ? `${lastClonedVoice.formant_alignment}%` : 'Optimal'}
                       </span>
                     </div>
-                    {lastClonedVoice.matched_anchors && lastClonedVoice.matched_anchors.length > 0 && (
-                      <div className="analysis-item full-width">
-                        <span className="analysis-label">Optimized Anchor Voice Projection</span>
-                        <div className="anchor-tags-row">
-                          {lastClonedVoice.matched_anchors.slice(0, 3).map((a) => (
-                            <span key={a.name} className="anchor-tag">
-                              {a.name.replace(/^(af_|am_|bf_|bm_|ef_|em_|ff_|hf_|hm_|if_|im_|pf_|pm_)/, '')} · {a.weight}%
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                    <div className="analysis-item full-width">
+                      <span className="analysis-label">Vocal Tract Formants</span>
+                      <span className="analysis-val">
+                        F1: {lastClonedVoice.f1 || 550} Hz · F2: {lastClonedVoice.f2 || 1600} Hz · F3: {lastClonedVoice.f3 || 2650} Hz
+                      </span>
+                    </div>
                   </div>
                 </div>
               )}

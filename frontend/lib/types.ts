@@ -95,7 +95,6 @@ export interface CustomVoice {
   f3?: number;
   spectral_centroid?: number;
   warmth_score?: number;
-  matched_anchors?: Array<{ name: string; weight: number }>;
   has_dvector?: boolean;
   neural_encoder?: string;
   neural_dim?: number;

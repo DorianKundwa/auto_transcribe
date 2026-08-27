@@ -391,7 +391,6 @@ def train_voice_model(
         "f3": profile["f3"],
         "spectral_centroid": profile["spectral_centroid"],
         "warmth_score": profile["warmth_score"],
-        "matched_anchors": matched_anchors,
         "has_dvector": True,
         "neural_encoder": "SV2TTS-3LSTM-GE2E",
         "neural_dim": 256,

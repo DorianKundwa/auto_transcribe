@@ -696,56 +696,49 @@ def generate_cloned_voice_tensor(
         loaded_tensors[fallback_name] = base_t
         available_candidates = [fallback_name]
 
-    # 1. Solve optimal barycentric weights on the voice manifold
-    optimal_weights = _solve_optimal_anchor_weights(profile, available_candidates)
+    # 1. Directly project acoustic profile and neural d-vector onto the 256-D style latent space
+    # Channels 0:128 = Acoustic timbre & vocal tract resonance
+    # Channels 128:256 = Prosody & glottal dynamics
+    fallback_name = "af_heart" if gender == "Female" else "am_adam"
+    p = _find_base_voice_path(fallback_name)
+    if p and p.exists():
+        base_t = torch.load(p, weights_only=True)
+    else:
+        base_t = torch.zeros(510, 1, 256)
 
-    # 2. Weighted blending of anchor tensors
-    blended = torch.zeros_like(list(loaded_tensors.values())[0])
-    total_w = sum(optimal_weights.values())
-    for name, w in optimal_weights.items():
-        blended += (w / total_w) * loaded_tensors[name]
+    # Base acoustic statistics
+    base_pitch = 210.0 if gender == "Female" else 125.0
+    base_f1 = 550.0
+    base_f3 = 2800.0 if gender == "Female" else 2500.0
+    base_centroid = 2400.0 if gender == "Female" else 1850.0
 
-    base_pitch = sum(optimal_weights[name] * ANCHOR_ACOUSTIC_PROFILES.get(name, {}).get("pitch", 160.0) for name in optimal_weights)
-    base_f1 = sum(optimal_weights[name] * ANCHOR_ACOUSTIC_PROFILES.get(name, {}).get("f1", 550.0) for name in optimal_weights)
-    base_f3 = sum(optimal_weights[name] * ANCHOR_ACOUSTIC_PROFILES.get(name, {}).get("f3", 2650.0) for name in optimal_weights)
-    base_centroid = sum(optimal_weights[name] * ANCHOR_ACOUSTIC_PROFILES.get(name, {}).get("centroid", 2200.0) for name in optimal_weights)
+    bespoke_tensor = base_t.clone()
 
-    # 3. Calibrated Delta Modulations
-    delta = torch.zeros_like(blended)
+    # --- SUBSPACE A: Direct Acoustic & Timbre Subspace (Channels 0:128) ---
+    f1_shift = np.clip((profile["f1"] - base_f1) / 180.0, -0.6, 0.6)
+    f3_shift = np.clip((profile["f3"] - base_f3) / 300.0, -0.6, 0.6)
+    centroid_shift = np.clip((profile["spectral_centroid"] - base_centroid) / 600.0, -0.6, 0.6)
+    warmth_shift = np.clip((profile["warmth_score"] - 50.0) / 40.0, -0.6, 0.6)
+    tilt_shift = np.clip((profile["spectral_tilt"] - 1.5) / 1.0, -0.6, 0.6)
 
-    # --- SUBSPACE A: Acoustic & Timbre Subspace (Channels 0:128) ---
-    f1_shift = np.clip((profile["f1"] - base_f1) / 150.0, -0.8, 0.8)
-    f3_shift = np.clip((profile["f3"] - base_f3) / 300.0, -0.8, 0.8)
-    delta[:, :, 0:24] += float(f1_shift * 0.045)
-    delta[:, :, 24:48] += float(f3_shift * 0.055)
+    bespoke_tensor[:, :, 0:24] += float(f1_shift * 0.035)
+    bespoke_tensor[:, :, 24:48] += float(f3_shift * 0.038)
+    bespoke_tensor[:, :, 48:72] += float(centroid_shift * 0.030)
+    bespoke_tensor[:, :, 72:96] += float(warmth_shift * 0.028)
+    bespoke_tensor[:, :, 96:128] += float(tilt_shift * 0.025)
 
-    centroid_shift = np.clip((profile["spectral_centroid"] - base_centroid) / 600.0, -0.8, 0.8)
-    flatness_shift = np.clip((profile["spectral_flatness"] - 0.05) / 0.04, -0.8, 0.8)
-    delta[:, :, 48:72] += float(centroid_shift * 0.040)
-    delta[:, :, 72:96] += float(flatness_shift * 0.030)
-
-    tilt_shift = np.clip((profile["spectral_tilt"] - 1.5) / 1.0, -0.8, 0.8)
-    delta[:, :, 96:128] += float(tilt_shift * 0.035)
-
-    # --- SUBSPACE B: Prosody, Pitch & Rhythm Subspace (Channels 128:256) ---
+    # --- SUBSPACE B: Direct Prosody, Pitch & Glottal Dynamics (Channels 128:256) ---
     pitch_diff_semitones = 12.0 * np.log2(max(50.0, profile["median_pitch"]) / max(50.0, base_pitch))
-    norm_pitch_shift = np.clip(pitch_diff_semitones / 6.0, -1.0, 1.0)
-    delta[:, :, 128:160] += float(norm_pitch_shift * 0.065)
+    norm_pitch_shift = np.clip(pitch_diff_semitones / 6.0, -0.8, 0.8)
+    bespoke_tensor[:, :, 128:160] += float(norm_pitch_shift * 0.045)
 
-    pitch_dyn_shift = np.clip((profile["pitch_iqr"] - 25.0) / 25.0, -0.8, 0.8)
-    delta[:, :, 160:192] += float(pitch_dyn_shift * 0.040)
+    pitch_dyn_shift = np.clip((profile["pitch_iqr"] - 25.0) / 25.0, -0.6, 0.6)
+    bespoke_tensor[:, :, 160:192] += float(pitch_dyn_shift * 0.030)
 
-    voiced_shift = np.clip((profile["voiced_fraction"] - 0.6) / 0.3, -0.8, 0.8)
-    delta[:, :, 192:256] += float(voiced_shift * 0.030)
+    voiced_shift = np.clip((profile["voiced_fraction"] - 0.6) / 0.3, -0.6, 0.6)
+    bespoke_tensor[:, :, 192:256] += float(voiced_shift * 0.025)
 
-    final_tensor = blended + delta
-
-    matched_anchors = [
-        {"name": name, "weight": round(w * 100.0, 1)}
-        for name, w in sorted(optimal_weights.items(), key=lambda x: x[1], reverse=True)
-    ]
-
-    return final_tensor.float(), matched_anchors
+    return bespoke_tensor.float(), []
 
 
 # ---------------------------------------------------------------------------
@@ -1018,7 +1011,6 @@ def clone_voice_from_audio(
         "f3": profile["f3"],
         "spectral_centroid": profile["spectral_centroid"],
         "warmth_score": profile["warmth_score"],
-        "matched_anchors": matched_anchors,
         "has_dvector": d_vector is not None,
         "neural_encoder": "SV2TTS-3LSTM-GE2E",
         "neural_dim": 256,
@@ -1030,6 +1022,6 @@ def clone_voice_from_audio(
     catalog[voice_id] = voice_record
     _save_catalog(catalog)
 
-    logger.info(f"Cloned custom voice registered: {voice_record['name']} ({voice_id}) with matched anchors {matched_anchors} and 256-D d-vector")
+    logger.info(f"Cloned custom voice registered: {voice_record['name']} ({voice_id}) with direct 256-D d-vector")
     return voice_record
 

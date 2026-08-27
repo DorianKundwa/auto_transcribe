@@ -25,12 +25,6 @@
     "f3": 3086.9,
     "spectral_centroid": 4060.3,
     "warmth_score": 35.2,
-    "matched_anchors": [
-      {
-        "name": "am_puck",
-        "weight": 100.0
-      }
-    ],
     "created_at": 1787852762.0596905,
     "is_custom": true
   },
@@ -48,12 +42,6 @@
     "f3": 3086.9,
     "spectral_centroid": 4060.3,
     "warmth_score": 35.2,
-    "matched_anchors": [
-      {
-        "name": "am_puck",
-        "weight": 100.0
-      }
-    ],
     "has_dvector": true,
     "neural_encoder": "SV2TTS-3LSTM-GE2E",
     "neural_dim": 256,
@@ -74,12 +62,6 @@
     "f3": 3086.9,
     "spectral_centroid": 4060.3,
     "warmth_score": 35.2,
-    "matched_anchors": [
-      {
-        "name": "am_puck",
-        "weight": 100.0
-      }
-    ],
     "has_dvector": true,
     "neural_encoder": "SV2TTS-3LSTM-GE2E",
     "neural_dim": 256,
@@ -100,12 +82,6 @@
     "f3": 3175.6,
     "spectral_centroid": 3126.9,
     "warmth_score": 16.9,
-    "matched_anchors": [
-      {
-        "name": "am_puck",
-        "weight": 100.0
-      }
-    ],
     "has_dvector": true,
     "neural_encoder": "SV2TTS-3LSTM-GE2E",
     "neural_dim": 256,
@@ -126,12 +102,6 @@
     "f3": 3086.9,
     "spectral_centroid": 4060.3,
     "warmth_score": 35.2,
-    "matched_anchors": [
-      {
-        "name": "am_puck",
-        "weight": 100.0
-      }
-    ],
     "has_dvector": true,
     "neural_encoder": "SV2TTS-3LSTM-GE2E",
     "neural_dim": 256,
@@ -141,6 +111,31 @@
     "formant_alignment": 99.8,
     "training_mode": "deep_neural",
     "created_at": 1787858505.1633182,
+    "is_custom": true
+  },
+  "custom_b04f2f32": {
+    "id": "custom_b04f2f32",
+    "name": "am_santa",
+    "gender": "Male",
+    "lang": "American English",
+    "langCode": "a",
+    "flag": "✨",
+    "duration": 27.8,
+    "median_pitch": 91.3,
+    "f1": 398.6,
+    "f2": 1955.2,
+    "f3": 2956.3,
+    "spectral_centroid": 1286.0,
+    "warmth_score": 95.0,
+    "has_dvector": true,
+    "neural_encoder": "SV2TTS-3LSTM-GE2E",
+    "neural_dim": 256,
+    "training_epochs": 100,
+    "final_loss": 0.064,
+    "speaker_similarity": 98.2,
+    "formant_alignment": 97.4,
+    "training_mode": "deep_neural",
+    "created_at": 1787862700.8966024,
     "is_custom": true
   }
 }
