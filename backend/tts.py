@@ -222,20 +222,6 @@ def _synthesize(
 
     audio_np = np.concatenate(audio_segments, axis=0)
 
-    # If this is a custom cloned voice, apply subtle timbre transfer from reference sample
-    custom_id = _extract_custom_voice_id(voice)
-    if custom_id:
-        try:
-            from .voice_cloner import get_custom_voice_sample_path, apply_timbre_transfer
-            sample_p = get_custom_voice_sample_path(custom_id)
-            if sample_p and sample_p.exists():
-                ref_audio, _ = sf.read(sample_p, dtype="float32")
-                if ref_audio.ndim > 1:
-                    ref_audio = np.mean(ref_audio, axis=1)
-                audio_np = apply_timbre_transfer(audio_np, ref_audio, sr=24000, strength=0.65)
-        except Exception as e:
-            logger.warning(f"Could not apply timbre transfer for {custom_id}: {e}")
-
     # Apply Voicebox Studio DSP FX (EQ, Compression, Reverb, Pitch)
     if dsp_settings:
         try:
@@ -323,20 +309,6 @@ def synthesize_preview(
         raise RuntimeError("Failed to synthesize preview audio.")
 
     audio_np = np.concatenate(audio_segments, axis=0)
-
-    # If this is a custom cloned voice, apply subtle timbre transfer
-    custom_id = _extract_custom_voice_id(voice)
-    if custom_id:
-        try:
-            from .voice_cloner import get_custom_voice_sample_path, apply_timbre_transfer
-            sample_p = get_custom_voice_sample_path(custom_id)
-            if sample_p and sample_p.exists():
-                ref_audio, _ = sf.read(sample_p, dtype="float32")
-                if ref_audio.ndim > 1:
-                    ref_audio = np.mean(ref_audio, axis=1)
-                audio_np = apply_timbre_transfer(audio_np, ref_audio, sr=24000, strength=0.65)
-        except Exception as e:
-            logger.warning(f"Could not apply preview timbre transfer for {custom_id}: {e}")
 
     # Apply Voicebox DSP effects if provided
     if dsp_settings:
