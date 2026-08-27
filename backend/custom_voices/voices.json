@@ -1,1 +1,14 @@
-{}
+{
+  "custom_60a55d54": {
+    "id": "custom_60a55d54",
+    "name": "dorian",
+    "gender": "Male",
+    "lang": "American English",
+    "langCode": "a",
+    "flag": "✨",
+    "duration": 30.0,
+    "median_pitch": 110.6,
+    "created_at": 1787850995.6410007,
+    "is_custom": true
+  }
+}
