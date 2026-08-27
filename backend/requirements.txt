@@ -16,11 +16,7 @@ loguru>=0.7.3
 num2words>=0.5.14
 spacy>=3.8.0
 ordered-set>=4.1.0
-speechbrain>=1.0.0
 librosa>=0.10.0
-coqui-tts
-coqpit
-trainer
-pysbd
-gruut
-einops
+scipy>=1.10.0
+scikit-learn>=1.2.0
+einops>=0.7.0
