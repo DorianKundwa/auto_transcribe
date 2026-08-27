@@ -236,3 +236,39 @@ export function getCustomVoiceSampleUrl(voiceId: string): string {
   return `${API_BASE}/api/voices/sample/${voiceId}`;
 }
 
+export interface VoiceVerifyResult {
+  similarity_pct: number;
+  is_match: boolean;
+  match_level: 'High' | 'Moderate' | 'Low';
+  encoder: string;
+}
+
+export async function verifyVoiceSimilarity(
+  fileOrBlob: Blob | File,
+  voiceId?: string,
+  secondFileOrBlob?: Blob | File,
+): Promise<VoiceVerifyResult> {
+  const form = new FormData();
+  const filenameA = (fileOrBlob as File).name || 'sample_a.webm';
+  form.append('file_a', fileOrBlob, filenameA);
+
+  if (voiceId) {
+    form.append('voice_id', voiceId);
+  } else if (secondFileOrBlob) {
+    const filenameB = (secondFileOrBlob as File).name || 'sample_b.webm';
+    form.append('file_b', secondFileOrBlob, filenameB);
+  }
+
+  const res = await fetch(`${API_BASE}/api/voices/verify`, {
+    method: 'POST',
+    body: form,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail ?? 'Voice verification failed');
+  }
+
+  return await res.json();
+}
+

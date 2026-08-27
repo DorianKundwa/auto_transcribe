@@ -2131,6 +2131,12 @@ body {
   color: hsl(265 100% 88%);
 }
 
+.custom-voice-pill.sv2tts-pill {
+  background: hsl(190 90% 40% / .25);
+  border-color: hsl(190 85% 50% / .4);
+  color: hsl(190 100% 85%);
+}
+
 .voice-card-top-actions {
   display: flex;
   align-items: center;

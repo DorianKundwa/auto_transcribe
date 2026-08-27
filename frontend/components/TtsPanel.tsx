@@ -1094,7 +1094,7 @@ export function TtsPanel({
                 <div className="clone-analysis-card">
                   <div className="analysis-card-header">
                     <Sparkles size={14} className="text-accent" />
-                    <span className="analysis-title">Acoustic Manifold Fitting Results</span>
+                    <span className="analysis-title">SV2TTS Neural Manifold Fitting Results</span>
                   </div>
                   <div className="analysis-grid">
                     <div className="analysis-item">
@@ -1102,8 +1102,16 @@ export function TtsPanel({
                       <span className="analysis-val">{lastClonedVoice.median_pitch ? `${lastClonedVoice.median_pitch} Hz` : 'Calculated'}</span>
                     </div>
                     <div className="analysis-item">
+                      <span className="analysis-label">Neural Embedding</span>
+                      <span className="analysis-val">256-D d-Vector</span>
+                    </div>
+                    <div className="analysis-item">
                       <span className="analysis-label">Vocal Warmth</span>
                       <span className="analysis-val">{lastClonedVoice.warmth_score ? `${lastClonedVoice.warmth_score}%` : 'Optimal'}</span>
+                    </div>
+                    <div className="analysis-item">
+                      <span className="analysis-label">Speaker Verification</span>
+                      <span className="analysis-val">GE2E 3-LSTM</span>
                     </div>
                     {lastClonedVoice.matched_anchors && lastClonedVoice.matched_anchors.length > 0 && (
                       <div className="analysis-item full-width">
@@ -1222,7 +1230,10 @@ export function TtsPanel({
                         <div className="voice-card-name-row">
                           <span className="voice-card-name">{v.name}</span>
                           {v.isCustom && (
-                            <span className="custom-voice-pill">Cloned</span>
+                            <>
+                              <span className="custom-voice-pill">Cloned</span>
+                              <span className="custom-voice-pill sv2tts-pill">SV2TTS</span>
+                            </>
                           )}
                         </div>
                         <span className="voice-card-meta">

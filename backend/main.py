@@ -259,6 +259,66 @@ async def get_custom_voice_sample_endpoint(voice_id: str):
     return FileResponse(path=str(p), media_type="audio/wav", filename=f"{voice_id}_sample.wav")
 
 
+@app.post("/api/voices/verify")
+async def verify_voice_similarity_endpoint(
+    file_a: Optional[UploadFile] = File(None),
+    file_b: Optional[UploadFile] = File(None),
+    voice_id: Optional[str] = Form(None),
+):
+    """
+    SV2TTS Speaker Verification Endpoint:
+    Compares two voice samples using 256-D deep speaker embeddings (GE2E d-vectors).
+    """
+    try:
+        from .speaker_encoder import extract_speaker_embedding, compute_speaker_similarity
+        from .voice_cloner import load_and_preprocess_audio, get_custom_voice_sample_path, get_custom_voice_dvector
+
+        if voice_id and file_a:
+            # Compare uploaded file against custom voice's stored d-vector or reference sample
+            content = await file_a.read()
+            audio_test, _ = load_and_preprocess_audio(io.BytesIO(content), target_sr=24000)
+            emb_test = extract_speaker_embedding(audio_test, sr=24000)
+
+            stored_emb = get_custom_voice_dvector(voice_id)
+            if stored_emb is None:
+                sample_p = get_custom_voice_sample_path(voice_id)
+                if not sample_p or not sample_p.exists():
+                    raise HTTPException(status_code=404, detail="Custom voice sample not found")
+                ref_audio, _ = load_and_preprocess_audio(str(sample_p), target_sr=24000)
+                stored_emb = extract_speaker_embedding(ref_audio, sr=24000)
+
+            sim = compute_speaker_similarity(emb_test, stored_emb)
+            match_level = "High" if sim >= 75.0 else ("Moderate" if sim >= 50.0 else "Low")
+            return {
+                "similarity_pct": sim,
+                "is_match": sim >= 65.0,
+                "match_level": match_level,
+                "encoder": "SV2TTS-3LSTM-GE2E",
+            }
+
+        elif file_a and file_b:
+            content_a = await file_a.read()
+            content_b = await file_b.read()
+            audio_a, _ = load_and_preprocess_audio(io.BytesIO(content_a), target_sr=24000)
+            audio_b, _ = load_and_preprocess_audio(io.BytesIO(content_b), target_sr=24000)
+            emb_a = extract_speaker_embedding(audio_a, sr=24000)
+            emb_b = extract_speaker_embedding(audio_b, sr=24000)
+            sim = compute_speaker_similarity(emb_a, emb_b)
+            match_level = "High" if sim >= 75.0 else ("Moderate" if sim >= 50.0 else "Low")
+            return {
+                "similarity_pct": sim,
+                "is_match": sim >= 65.0,
+                "match_level": match_level,
+                "encoder": "SV2TTS-3LSTM-GE2E",
+            }
+        else:
+            raise HTTPException(status_code=400, detail="Provide either voice_id + file_a, or file_a + file_b")
+
+    except Exception as exc:
+        logger.exception("Voice verification failed")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 
 # ---------------------------------------------------------------------------
 # Background workers

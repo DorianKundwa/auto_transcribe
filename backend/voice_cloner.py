@@ -864,6 +864,25 @@ def get_custom_voice_sample_path(voice_id: str) -> Optional[Path]:
     return None
 
 
+def get_custom_voice_dvector_path(voice_id: str) -> Optional[Path]:
+    """Get the path to the 256-D SV2TTS speaker embedding for a custom voice."""
+    vec_file = VECTORS_DIR / f"{voice_id}_dvector.npy"
+    if vec_file.exists():
+        return vec_file
+    return None
+
+
+def get_custom_voice_dvector(voice_id: str) -> Optional[np.ndarray]:
+    """Load the 256-D SV2TTS speaker embedding for a custom voice."""
+    p = get_custom_voice_dvector_path(voice_id)
+    if p and p.exists():
+        try:
+            return np.load(p).astype(np.float32)
+        except Exception as e:
+            logger.warning(f"Could not load d-vector for {voice_id}: {e}")
+    return None
+
+
 def delete_custom_voice(voice_id: str) -> bool:
     """Delete a custom voice and its associated files."""
     catalog = _load_catalog()
@@ -873,7 +892,11 @@ def delete_custom_voice(voice_id: str) -> bool:
     del catalog[voice_id]
     _save_catalog(catalog)
 
-    for path in (SAMPLES_DIR / f"{voice_id}.wav", VECTORS_DIR / f"{voice_id}.pt"):
+    for path in (
+        SAMPLES_DIR / f"{voice_id}.wav",
+        VECTORS_DIR / f"{voice_id}.pt",
+        VECTORS_DIR / f"{voice_id}_dvector.npy",
+    ):
         if path.exists():
             try:
                 os.remove(path)
@@ -893,13 +916,15 @@ def clone_voice_from_audio(
     """
     End-to-end voice cloning & acoustic training pipeline:
       1. Preprocess & normalize reference audio to 24 kHz mono WAV.
-      2. Extract high-resolution acoustic profile (F0 pitch, LPC formants, MFCCs, spectral envelope).
-      3. Solve constrained manifold barycentric optimization & synthesize style tensor (.pt).
-      4. Persist voice sample and register full metadata in catalog.
+      2. Extract 256-D SV2TTS Deep Speaker Embedding (d-vector).
+      3. Extract high-resolution acoustic profile (F0 pitch, LPC formants, MFCCs, spectral envelope).
+      4. Solve constrained manifold barycentric optimization & synthesize style tensor (.pt).
+      5. Persist voice sample, d-vector, and register full metadata in catalog.
     """
     voice_id = f"custom_{uuid.uuid4().hex[:8]}"
     sample_path = SAMPLES_DIR / f"{voice_id}.wav"
     vector_path = VECTORS_DIR / f"{voice_id}.pt"
+    dvector_path = VECTORS_DIR / f"{voice_id}_dvector.npy"
 
     if isinstance(audio_source, (bytes, bytearray)):
         audio_source = io.BytesIO(audio_source)
@@ -912,11 +937,20 @@ def clone_voice_from_audio(
     # Save reference audio sample (24 kHz WAV)
     sf.write(sample_path, audio_24k, 24000)
 
-    # 2. Extract deep acoustic profile
+    # 2. Extract SV2TTS 256-D Deep Speaker Embedding (d-vector)
+    d_vector = None
+    try:
+        from .speaker_encoder import extract_speaker_embedding
+        d_vector = extract_speaker_embedding(audio_24k, sr=24000)
+        np.save(dvector_path, d_vector)
+    except Exception as exc:
+        logger.warning(f"Could not extract SV2TTS speaker embedding: {exc}")
+
+    # 3. Extract deep acoustic profile
     profile = extract_acoustic_profile(audio_24k, sr=24000)
     detected_gender = gender if gender and gender != "auto" else ("Female" if profile["gender_tendency"] >= 0.50 else "Male")
 
-    # 3. Generate style vector tensor using SLSQP manifold optimization
+    # 4. Generate style vector tensor using SLSQP manifold optimization
     style_tensor, matched_anchors = generate_cloned_voice_tensor(
         profile=profile,
         base_gender=detected_gender,
@@ -952,6 +986,9 @@ def clone_voice_from_audio(
         "spectral_centroid": profile["spectral_centroid"],
         "warmth_score": profile["warmth_score"],
         "matched_anchors": matched_anchors,
+        "has_dvector": d_vector is not None,
+        "neural_encoder": "SV2TTS-3LSTM-GE2E",
+        "neural_dim": 256,
         "created_at": time.time(),
         "is_custom": True,
     }
@@ -960,6 +997,6 @@ def clone_voice_from_audio(
     catalog[voice_id] = voice_record
     _save_catalog(catalog)
 
-    logger.info(f"Cloned custom voice registered: {voice_record['name']} ({voice_id}) with matched anchors {matched_anchors}")
+    logger.info(f"Cloned custom voice registered: {voice_record['name']} ({voice_id}) with matched anchors {matched_anchors} and 256-D d-vector")
     return voice_record
 
