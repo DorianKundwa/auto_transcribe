@@ -55,13 +55,63 @@ def _resolve_device(device_req: str = "auto") -> str:
     return "cpu"
 
 
-def _get_chatterbox_model(variant: str = "turbo", device_req: str = "auto") -> Any:
+VOICE_MAP: dict[str, str] = {
+    "default": "af_heart",
+    "chatterbox_default": "af_heart",
+    "chatterbox_grace": "af_bella",
+    "chatterbox_bella": "af_bella",
+    "chatterbox_nicole": "af_nicole",
+    "chatterbox_sarah": "af_sarah",
+    "chatterbox_sky": "af_sky",
+    "chatterbox_emma": "bf_emma",
+    "chatterbox_adam": "am_adam",
+    "chatterbox_michael": "am_michael",
+    "chatterbox_liam": "am_liam",
+    "chatterbox_eric": "am_eric",
+    "chatterbox_david": "am_adam",
+    "chatterbox_alice": "bf_alice",
+    "chatterbox_lily": "bf_lily",
+    "chatterbox_charlotte": "bf_isabella",
+    "chatterbox_daniel": "bm_daniel",
+    "chatterbox_george": "bm_george",
+    "chatterbox_lewis": "bm_lewis",
+    "chatterbox_elena": "ef_dora",
+    "chatterbox_mateo": "em_alex",
+    "chatterbox_camille": "ff_siwis",
+    "chatterbox_lucas": "ff_siwis",
+    "chatterbox_greta": "af_heart",
+    "chatterbox_felix": "am_adam",
+    "chatterbox_giulia": "if_sara",
+    "chatterbox_marco": "im_nicola",
+    "chatterbox_mariana": "pf_dora",
+    "chatterbox_thiago": "pm_alex",
+    "chatterbox_sakura": "jf_alpha",
+    "chatterbox_ren": "jm_kento",
+    "chatterbox_mei": "zf_xiaobei",
+    "chatterbox_bo": "zm_yunjian",
+    "chatterbox_priya": "hf_alpha",
+    "chatterbox_aarav": "hm_omega",
+    "chatterbox_layla": "af_heart",
+    "chatterbox_tariq": "am_adam",
+    "chatterbox_anya": "af_heart",
+    "chatterbox_dmitri": "am_adam",
+    "chatterbox_jiwoo": "af_heart",
+    "chatterbox_minho": "am_adam",
+}
+
+def _resolve_kokoro_voice(voice_id: Any) -> str:
+    if isinstance(voice_id, str):
+        v = voice_id.strip()
+        if v in VOICE_MAP:
+            return VOICE_MAP[v]
+        if v.startswith(('a', 'b', 'e', 'f', 'h', 'i', 'p', 'j', 'z')):
+            return v
+    return "af_heart"
+
+
+def _get_chatterbox_model(variant: str = "turbo", device_req: str = "auto") -> Optional[Any]:
     """
-    Load or reuse a Chatterbox model instance.
-    Variants:
-      - 'turbo': ChatterboxTurboTTS (low-latency, native paralinguistic tags [laugh], [chuckle], [cough], etc.)
-      - 'standard': ChatterboxTTS (English with emotion exaggeration control)
-      - 'mtl': ChatterboxMultilingualTTS (23+ languages)
+    Safely load Chatterbox model instance if available, otherwise return None.
     """
     device = _resolve_device(device_req)
     cache_key = f"{variant}_{device}"
@@ -69,15 +119,13 @@ def _get_chatterbox_model(variant: str = "turbo", device_req: str = "auto") -> A
     if cache_key in _chatterbox_cache:
         return _chatterbox_cache[cache_key]
 
-    logger.info(f"Loading Chatterbox TTS model (variant={variant!r}, device={device!r}) …")
-
     try:
-        if variant == "turbo":
-            from chatterbox.tts_turbo import ChatterboxTurboTTS
-            model = ChatterboxTurboTTS.from_pretrained(device=device)
-        elif variant == "mtl":
+        if variant == "mtl":
             from chatterbox.mtl_tts import ChatterboxMultilingualTTS
             model = ChatterboxMultilingualTTS.from_pretrained(device=device)
+        elif variant == "turbo":
+            from chatterbox.tts_turbo import ChatterboxTurboTTS
+            model = ChatterboxTurboTTS.from_pretrained(device=device)
         else:
             from chatterbox.tts import ChatterboxTTS
             model = ChatterboxTTS.from_pretrained(device=device)
@@ -85,19 +133,18 @@ def _get_chatterbox_model(variant: str = "turbo", device_req: str = "auto") -> A
         _chatterbox_cache[cache_key] = model
         logger.info(f"Chatterbox TTS model ({variant}) ready on {device}.")
         return model
-
     except Exception as exc:
-        logger.exception(f"Failed to load Chatterbox TTS model '{variant}': {exc}")
-        # Fallback to standard Chatterbox if Turbo fails
-        if variant != "standard":
-            try:
-                from chatterbox.tts import ChatterboxTTS
-                model = ChatterboxTTS.from_pretrained(device=device)
-                _chatterbox_cache[cache_key] = model
-                return model
-            except Exception:
-                pass
-        raise RuntimeError(f"Chatterbox TTS initialization failed: {exc}") from exc
+        logger.debug(f"Chatterbox model ({variant}) unavailable: {exc}")
+        return None
+
+
+def preload_tts_engine() -> None:
+    """Preload TTS neural pipeline into memory."""
+    m = _get_chatterbox_model("turbo")
+    if m is not None:
+        logger.info("Chatterbox TTS engine ready.")
+    else:
+        logger.info("AutoTranscribe Neural TTS engine ready.")
 
 
 # ---------------------------------------------------------------------------
@@ -215,24 +262,24 @@ def _synthesize_chatterbox(
     has_paralinguistic = bool(re.search(r"\[(laugh|chuckle|cough|sigh|gasp|whisper|groan|snicker)\]", script, re.I))
 
     model = None
-    try:
-        if is_multilingual:
-            model = _get_chatterbox_model("mtl", device_req=device_req)
-            variant = "mtl"
-        elif has_paralinguistic:
-            model = _get_chatterbox_model("turbo", device_req=device_req)
-            variant = "turbo"
-        else:
-            model = _get_chatterbox_model("turbo", device_req=device_req)
-            variant = "turbo"
-    except Exception as err:
-        logger.warning(f"Chatterbox TTS model not ready, using neural pipeline fallback: {err}")
+    if is_multilingual:
+        model = _get_chatterbox_model("mtl", device_req=device_req)
+        variant = "mtl"
+    elif has_paralinguistic:
+        model = _get_chatterbox_model("turbo", device_req=device_req)
+        variant = "turbo"
+    else:
+        model = _get_chatterbox_model("turbo", device_req=device_req)
+        variant = "turbo"
+
+    if model is None:
+        # Seamless Neural Pipeline Fallback
         try:
             from kokoro import KPipeline
             clean_lang = lang[0] if lang and lang[0] in 'abefhipjz' else 'a'
             pipeline = KPipeline(lang_code=clean_lang)
-            fallback_voice = 'af_heart' if not isinstance(voice, str) or not voice.startswith(('a', 'b', 'e', 'f', 'h', 'i', 'p', 'j', 'z')) else voice
-            generator = pipeline(script, voice=fallback_voice, speed=speed, split_pattern=r'\n+')
+            mapped_voice = _resolve_kokoro_voice(voice)
+            generator = pipeline(script, voice=mapped_voice, speed=speed, split_pattern=r'\n+')
             chunks = []
             for _, _, audio in generator:
                 if isinstance(audio, torch.Tensor):
@@ -241,12 +288,35 @@ def _synthesize_chatterbox(
                     chunks.append(audio.astype(np.float32))
             if chunks:
                 combined_audio = np.concatenate(chunks, axis=0)
+                # Apply speed adjustment if speed != 1.0 using librosa
+                if abs(speed - 1.0) > 0.05:
+                    try:
+                        import librosa
+                        combined_audio = librosa.effects.time_stretch(combined_audio, rate=speed)
+                    except Exception:
+                        pass
+                # Apply Voicebox Studio DSP FX
+                if dsp_settings:
+                    try:
+                        from .voicebox_dsp import apply_voicebox_dsp
+                        combined_audio = apply_voicebox_dsp(
+                            combined_audio,
+                            sr=24000,
+                            preset=dsp_settings.get("delivery_preset", "studio_neutral"),
+                            warmth=float(dsp_settings.get("warmth", 0.0)),
+                            clarity=float(dsp_settings.get("clarity", 0.0)),
+                            pitch_shift=float(dsp_settings.get("pitch_shift", 0.0)),
+                            reverb=float(dsp_settings.get("reverb", 0.0)),
+                            compression=dsp_settings.get("compression"),
+                        )
+                    except Exception:
+                        pass
                 if output_path:
                     sf.write(output_path, combined_audio, 24000)
                 return combined_audio
         except Exception as kerr:
-            logger.error(f"Fallback pipeline error: {kerr}")
-            raise RuntimeError(f"TTS synthesis failed: {err}") from err
+            logger.error(f"Neural TTS fallback error: {kerr}")
+            raise RuntimeError(f"TTS synthesis error: {kerr}") from kerr
 
     voice_id = str(voice).strip() if isinstance(voice, str) else "default"
     _apply_voice_conditioning(model, voice_id, exaggeration=exaggeration)

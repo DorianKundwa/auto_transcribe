@@ -51,12 +51,10 @@ TTS_DIR.mkdir(parents=True, exist_ok=True)
 def _preload_models():
     """Background task to preload models to disk and RAM."""
     try:
-        logger.info("Initializing Chatterbox TTS models...")
-        from backend.tts import _get_chatterbox_model
-        _get_chatterbox_model("turbo")
-        logger.info("Chatterbox TTS models preloaded successfully.")
+        from backend.tts import preload_tts_engine
+        preload_tts_engine()
     except Exception as exc:
-        logger.error(f"Failed to preload Chatterbox models: {exc}")
+        logger.debug(f"Preload note: {exc}")
 
 
 @asynccontextmanager
