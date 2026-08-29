@@ -17,11 +17,13 @@ Routes:
 from __future__ import annotations
 
 import asyncio
+import io
 import logging
 import os
 import shutil
 import time
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -40,9 +42,44 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# App setup
-# ---------------------------------------------------------------------------
-app = FastAPI(title="AutoTranscribe API", version="1.0.0")
+UPLOAD_DIR = Path(__file__).parent / "uploads"
+UPLOAD_DIR.mkdir(exist_ok=True)
+TTS_DIR = UPLOAD_DIR / "tts_wav"
+TTS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _preload_models():
+    """Background task to preload models to disk and RAM."""
+    try:
+        logger.info("Initializing Chatterbox TTS models...")
+        from backend.tts import _get_chatterbox_model
+        _get_chatterbox_model("turbo")
+        logger.info("Chatterbox TTS models preloaded successfully.")
+    except Exception as exc:
+        logger.error(f"Failed to preload Chatterbox models: {exc}")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    asyncio.create_task(asyncio.to_thread(_preload_models))
+    for f in UPLOAD_DIR.glob("*"):
+        if f.is_file():
+            try:
+                f.unlink()
+            except OSError:
+                pass
+    if TTS_DIR.exists():
+        for f in TTS_DIR.glob("*"):
+            if f.is_file():
+                try:
+                    f.unlink()
+                except OSError:
+                    pass
+    logger.info("AutoTranscribe backend ready.")
+    yield
+
+
+app = FastAPI(title="AutoTranscribe API", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -51,11 +88,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-UPLOAD_DIR = Path(__file__).parent / "uploads"
-UPLOAD_DIR.mkdir(exist_ok=True)
-TTS_DIR = UPLOAD_DIR / "tts_wav"
-TTS_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".webm"}
 
@@ -687,33 +719,4 @@ async def delete_job(job_id: str):
     return {"ok": True}
 
 
-# ---------------------------------------------------------------------------
-# Startup: clean up stale uploads & TTS wavs from previous run
-# ---------------------------------------------------------------------------
-def _preload_models():
-    """Background task to preload models to disk and RAM."""
-    try:
-        logger.info("Initializing Chatterbox TTS models...")
-        from backend.tts import _get_chatterbox_model
-        _get_chatterbox_model("turbo")
-        logger.info("Chatterbox TTS models preloaded successfully.")
-    except Exception as exc:
-        logger.error(f"Failed to preload Chatterbox models: {exc}")
 
-@app.on_event("startup")
-async def startup_cleanup():
-    asyncio.create_task(asyncio.to_thread(_preload_models))
-    for f in UPLOAD_DIR.glob("*"):
-        if f.is_file():
-            try:
-                f.unlink()
-            except OSError:
-                pass
-    if TTS_DIR.exists():
-        for f in TTS_DIR.glob("*"):
-            if f.is_file():
-                try:
-                    f.unlink()
-                except OSError:
-                    pass
-    logger.info("AutoTranscribe backend ready.")

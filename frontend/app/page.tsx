@@ -22,13 +22,14 @@ const DEFAULT_TRANSCRIBE_SETTINGS: TranscribeSettings = {
 
 const DEFAULT_TTS_SETTINGS: TtsSettings = {
   mode: 'single',
-  voice: 'af_heart',
+  voice: 'default',
   voiceBlend: [
-    { voice: 'af_heart', weight: 60 },
-    { voice: 'am_michael', weight: 40 },
+    { voice: 'default', weight: 60 },
+    { voice: 'chatterbox_michael', weight: 40 },
   ],
-  langCode: 'a',
+  langCode: 'en',
   speed: 1.0,
+  exaggeration: 0.5,
   model: 'base',
   device: 'auto',
   pauseThreshold: 0.75,

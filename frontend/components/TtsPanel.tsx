@@ -526,7 +526,7 @@ export function TtsPanel({
       await deleteCustomVoice(voiceId);
       await refreshCustomVoices();
       if (settings.voice === voiceId) {
-        onSettingsChange({ voice: 'af_heart', langCode: 'a' });
+        onSettingsChange({ voice: 'default', langCode: 'en' });
       }
     } catch (err) {
       console.error('Failed to delete voice:', err);
