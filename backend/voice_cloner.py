@@ -853,14 +853,44 @@ def apply_timbre_transfer(
 # ---------------------------------------------------------------------------
 
 def _load_catalog() -> Dict[str, Any]:
-    if not CATALOG_FILE.exists():
-        return {}
-    try:
-        with open(CATALOG_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception as e:
-        logger.error(f"Error reading voices catalog: {e}")
-        return {}
+    catalog: Dict[str, Any] = {}
+    if CATALOG_FILE.exists():
+        try:
+            with open(CATALOG_FILE, "r", encoding="utf-8") as f:
+                catalog = json.load(f)
+        except Exception as e:
+            logger.error(f"Error reading voices catalog: {e}")
+            catalog = {}
+
+    # Auto-discover any orphaned .wav files in SAMPLES_DIR so user-stored voices are never lost
+    dirty = False
+    if SAMPLES_DIR.exists():
+        for sample_file in SAMPLES_DIR.glob("*.wav"):
+            voice_id = sample_file.stem
+            if voice_id not in catalog:
+                try:
+                    clean_name = voice_id.replace("custom_", "Voice ").replace("_", " ").title()
+                    catalog[voice_id] = {
+                        "id": voice_id,
+                        "name": clean_name,
+                        "gender": "Male",
+                        "lang": "English",
+                        "langCode": "en",
+                        "flag": "🎙️",
+                        "duration": round(sample_file.stat().st_size / (24000 * 2), 2),
+                        "has_dvector": (VECTORS_DIR / f"{voice_id}_dvector.npy").exists(),
+                        "neural_encoder": "Chatterbox-VoiceEncoder",
+                        "created_at": sample_file.stat().st_mtime,
+                        "is_custom": True,
+                    }
+                    dirty = True
+                except Exception:
+                    pass
+
+    if dirty:
+        _save_catalog(catalog)
+
+    return catalog
 
 
 def _save_catalog(catalog: Dict[str, Any]) -> None:

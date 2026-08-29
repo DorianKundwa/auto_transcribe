@@ -277,5 +277,31 @@
     "formant_alignment": 96.1,
     "created_at": 1787865584.9766946,
     "is_custom": true
+  },
+  "custom_4c63d61a": {
+    "id": "custom_4c63d61a",
+    "name": "Voice 4C63D61A",
+    "gender": "Male",
+    "lang": "English",
+    "langCode": "en",
+    "flag": "🎙️",
+    "duration": 30.0,
+    "has_dvector": false,
+    "neural_encoder": "Chatterbox-VoiceEncoder",
+    "created_at": 1787747191.3514643,
+    "is_custom": true
+  },
+  "custom_96cbfabe": {
+    "id": "custom_96cbfabe",
+    "name": "Voice 96Cbfabe",
+    "gender": "Male",
+    "lang": "English",
+    "langCode": "en",
+    "flag": "🎙️",
+    "duration": 30.0,
+    "has_dvector": false,
+    "neural_encoder": "Chatterbox-VoiceEncoder",
+    "created_at": 1787747141.88337,
+    "is_custom": true
   }
 }

@@ -13,6 +13,7 @@ Provides:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import io
 import logging
 import os
@@ -39,6 +40,10 @@ TTS_DIR.mkdir(parents=True, exist_ok=True)
 CUSTOM_VOICES_DIR = Path(__file__).parent / "custom_voices"
 SAMPLES_DIR = CUSTOM_VOICES_DIR / "samples"
 VECTORS_DIR = CUSTOM_VOICES_DIR / "vectors"
+PREVIEWS_DIR = CUSTOM_VOICES_DIR / "previews"
+
+for _d in (CUSTOM_VOICES_DIR, SAMPLES_DIR, VECTORS_DIR, PREVIEWS_DIR):
+    _d.mkdir(parents=True, exist_ok=True)
 
 
 def _resolve_device(device_req: str = "auto") -> str:
@@ -136,17 +141,27 @@ def _apply_voice_conditioning(model: Any, voice: str, exaggeration: float = 0.5)
     if not voice or voice in ("default", "builtin", "af_heart", "chatterbox_default"):
         return
 
-    # Check for precomputed conditionals
+    clean_id = str(voice).strip()
     device = getattr(model, "device", "cpu")
-    conds = _load_custom_conditionals(voice, device)
+
+    # 1. Check for precomputed conditionals tensor on disk
+    conds = _load_custom_conditionals(clean_id, device)
     if conds is not None:
         model.conds = conds
         return
 
-    # Check for reference audio
-    ref_audio = _resolve_reference_audio(voice)
+    # 2. Check for reference audio sample and compute + permanently store conditionals
+    ref_audio = _resolve_reference_audio(clean_id)
     if ref_audio and os.path.exists(ref_audio):
-        model.prepare_conditionals(ref_audio, exaggeration=exaggeration)
+        if hasattr(model, "prepare_conditionals"):
+            model.prepare_conditionals(ref_audio, exaggeration=exaggeration)
+            if getattr(model, "conds", None) is not None:
+                try:
+                    vector_file = VECTORS_DIR / f"{clean_id}.pt"
+                    model.conds.save(vector_file)
+                    logger.info(f"Persisted voice conditionals for '{clean_id}' to {vector_file}")
+                except Exception as e:
+                    logger.debug(f"Could not persist voice conditionals for '{clean_id}': {e}")
         return
 
 
@@ -310,7 +325,7 @@ def synthesize_preview(
 ) -> bytes:
     """
     Fast audio preview generator for a selected Chatterbox voice or custom clone.
-    Returns in-memory WAV audio bytes with optional Voicebox DSP.
+    Stores and retrieves preview WAVs from disk so previews are never re-synthesized or redownloaded.
     """
     sample_text = (
         text.strip()
@@ -318,10 +333,26 @@ def synthesize_preview(
         else "Hello! This is a voice preview powered by Resemble AI's Chatterbox TTS."
     )
 
-    cache_key = f"{voice}|{lang_code}|{speed}|{exaggeration}|{sample_text}|{dsp_settings}"
-    if cache_key in _preview_cache:
-        return _preview_cache[cache_key]
+    raw_key = f"{voice}|{lang_code}|{speed}|{exaggeration}|{sample_text}|{dsp_settings}".encode("utf-8")
+    cache_hash = hashlib.sha256(raw_key).hexdigest()[:24]
+    preview_file = PREVIEWS_DIR / f"preview_{cache_hash}.wav"
 
+    # 1. In-memory cache hit
+    if cache_hash in _preview_cache:
+        return _preview_cache[cache_hash]
+
+    # 2. Persistent disk cache hit (no re-download or re-synthesis needed)
+    if preview_file.exists():
+        try:
+            with open(preview_file, "rb") as f:
+                data = f.read()
+                if len(data) > 44:  # Valid WAV size
+                    _preview_cache[cache_hash] = data
+                    return data
+        except Exception as e:
+            logger.debug(f"Could not load cached preview file: {e}")
+
+    # 3. Synthesize and write to persistent storage
     audio_np = _synthesize_chatterbox(
         script=sample_text,
         voice=voice,
@@ -334,9 +365,18 @@ def synthesize_preview(
     buf = io.BytesIO()
     sf.write(buf, audio_np, 24000, format="WAV")
     buf.seek(0)
-
     wav_bytes = buf.read()
-    _preview_cache[cache_key] = wav_bytes
+
+    _preview_cache[cache_hash] = wav_bytes
+
+    # Persist preview to disk
+    try:
+        with open(preview_file, "wb") as f:
+            f.write(wav_bytes)
+        logger.debug(f"Persisted voice preview to {preview_file}")
+    except Exception as e:
+        logger.debug(f"Could not persist preview file to disk: {e}")
+
     return wav_bytes
 
 
