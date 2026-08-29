@@ -355,6 +355,7 @@ async def run_tts_and_transcribe(
     pause_threshold: float = 0.75,
     dsp_settings: Optional[Dict[str, Any]] = None,
     progress_cb: Optional[Callable[[str, int], None]] = None,
+    job_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """
     Full pipeline: Script -> Chatterbox TTS (24kHz WAV) -> WhisperX Alignment -> Word-Level Timestamps.
@@ -370,7 +371,8 @@ async def run_tts_and_transcribe(
 
     # 1. Chatterbox TTS synthesis -> WAV
     emit("generating_audio", 0)
-    wav_filename = f"tts_{uuid.uuid4()}.wav"
+    wav_id = job_id if job_id else str(uuid.uuid4())
+    wav_filename = f"tts_{wav_id}.wav"
     wav_path = str(TTS_DIR / wav_filename)
 
     logger.info("Starting Chatterbox TTS synthesis (speed=%.1f, exaggeration=%.2f) …", speed, exaggeration)

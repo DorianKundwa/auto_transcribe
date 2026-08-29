@@ -62,20 +62,26 @@ def _preload_models():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     asyncio.create_task(asyncio.to_thread(_preload_models))
+    # Intelligent persistence cleanup: only clean stale temporary raw uploads (>24h) and old TTS files (>7d)
+    now = time.time()
+    cutoff_uploads = now - (24 * 3600)
+    cutoff_tts = now - (7 * 24 * 3600)
     for f in UPLOAD_DIR.glob("*"):
-        if f.is_file():
+        if f.is_file() and f.name != ".gitkeep":
             try:
-                f.unlink()
+                if f.stat().st_mtime < cutoff_uploads:
+                    f.unlink()
             except OSError:
                 pass
     if TTS_DIR.exists():
         for f in TTS_DIR.glob("*"):
-            if f.is_file():
+            if f.is_file() and f.name != ".gitkeep":
                 try:
-                    f.unlink()
+                    if f.stat().st_mtime < cutoff_tts:
+                        f.unlink()
                 except OSError:
                     pass
-    logger.info("AutoTranscribe backend ready.")
+    logger.info("AutoTranscribe backend ready with persistent storage.")
     yield
 
 
@@ -563,6 +569,7 @@ async def _run_tts_job(
             pause_threshold=pause_threshold,
             dsp_settings=dsp_settings,
             progress_cb=progress_cb,
+            job_id=job_id,
         )
         job["status"] = "complete"
         job["wav_path"] = result.get("wav_path")
@@ -641,10 +648,20 @@ async def get_result(job_id: str):
 @app.get("/api/download/wav/{job_id}")
 async def download_wav(job_id: str):
     job = _jobs.get(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+    wav_path = job.get("wav_path") if job else None
 
-    wav_path = job.get("wav_path")
+    # Persistent disk lookup if backend restarted
+    if not wav_path or not os.path.exists(wav_path):
+        candidates = [
+            TTS_DIR / f"tts_{job_id}.wav",
+            TTS_DIR / f"{job_id}.wav",
+            *TTS_DIR.glob(f"*{job_id}*.wav"),
+        ]
+        for c in candidates:
+            if c.exists():
+                wav_path = str(c)
+                break
+
     if not wav_path or not os.path.exists(wav_path):
         raise HTTPException(status_code=404, detail="WAV file not found or expired")
 
@@ -661,10 +678,20 @@ async def download_wav(job_id: str):
 @app.get("/api/download/mp3/{job_id}")
 async def download_mp3(job_id: str):
     job = _jobs.get(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+    wav_path = job.get("wav_path") if job else None
 
-    wav_path = job.get("wav_path")
+    # Persistent disk lookup if backend restarted
+    if not wav_path or not os.path.exists(wav_path):
+        candidates = [
+            TTS_DIR / f"tts_{job_id}.wav",
+            TTS_DIR / f"{job_id}.wav",
+            *TTS_DIR.glob(f"*{job_id}*.wav"),
+        ]
+        for c in candidates:
+            if c.exists():
+                wav_path = str(c)
+                break
+
     if not wav_path or not os.path.exists(wav_path):
         raise HTTPException(status_code=404, detail="WAV file not found or expired")
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { AudioUploader } from '@/components/AudioUploader';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { TtsPanel } from '@/components/TtsPanel';
@@ -9,9 +9,31 @@ import { AudioPlayer, AudioPlayerHandle } from '@/components/AudioPlayer';
 import { TranscriptEditor } from '@/components/TranscriptEditor';
 import { ExportPanel } from '@/components/ExportPanel';
 import { useTranscription } from '@/hooks/useTranscription';
-import { Segment, TranscribeSettings, TtsSettings, AppMode } from '@/lib/types';
+import { Segment, TranscribeSettings, TtsSettings, AppMode, TranscriptResult } from '@/lib/types';
 import { getWavDownloadUrl } from '@/lib/api';
-import { Mic2, Sparkles, RefreshCw, ExternalLink, Volume2, FileAudio } from 'lucide-react';
+import {
+  loadSavedMode,
+  saveMode,
+  loadSavedScriptDraft,
+  saveScriptDraft,
+  loadSavedTtsSettings,
+  saveTtsSettings,
+  loadSavedTranscribeSettings,
+  saveTranscribeSettings,
+  loadSavedActiveState,
+  saveActiveState,
+  saveHistoryItem,
+} from '@/lib/storage';
+import {
+  Mic2,
+  Sparkles,
+  RefreshCw,
+  ExternalLink,
+  FileAudio,
+  CheckCircle2,
+  RotateCcw,
+  HardDrive,
+} from 'lucide-react';
 
 const DEFAULT_TRANSCRIBE_SETTINGS: TranscribeSettings = {
   model: 'base',
@@ -36,23 +58,90 @@ const DEFAULT_TTS_SETTINGS: TtsSettings = {
 };
 
 export default function HomePage() {
-  const [mode, setMode] = useState<AppMode>('tts'); // Default to TTS or Transcribe
+  const [mode, setMode] = useState<AppMode>('tts');
   const [file, setFile] = useState<File | null>(null);
   const [duration, setDuration] = useState(0);
   const [script, setScript] = useState('');
   const [transcribeSettings, setTranscribeSettings] = useState<TranscribeSettings>(DEFAULT_TRANSCRIBE_SETTINGS);
   const [ttsSettings, setTtsSettings] = useState<TtsSettings>(DEFAULT_TTS_SETTINGS);
   const [segments, setSegments] = useState<Segment[]>([]);
+  const [persistedResult, setPersistedResult] = useState<TranscriptResult | null>(null);
+  const [persistedJobId, setPersistedJobId] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
+  const [isHydrated, setIsHydrated] = useState(false);
+  const [savedBadge, setSavedBadge] = useState(false);
   const playerRef = useRef<AudioPlayerHandle>(null);
 
   const tx = useTranscription();
 
+  // ---------------------------------------------------------------------------
+  // Local Storage Hydration on Client Mount
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    try {
+      const savedMode = loadSavedMode('tts');
+      const savedScript = loadSavedScriptDraft('');
+      const savedTts = loadSavedTtsSettings(DEFAULT_TTS_SETTINGS);
+      const savedTranscribe = loadSavedTranscribeSettings(DEFAULT_TRANSCRIBE_SETTINGS);
+      const savedActive = loadSavedActiveState();
+
+      setMode(savedMode);
+      setScript(savedScript);
+      setTtsSettings(savedTts);
+      setTranscribeSettings(savedTranscribe);
+
+      if (savedActive && savedActive.segments && savedActive.segments.length > 0) {
+        setSegments(savedActive.segments);
+        if (savedActive.result) {
+          setPersistedResult(savedActive.result);
+          if (savedActive.result.job_id) {
+            setPersistedJobId(savedActive.result.job_id);
+          }
+        }
+        if (savedActive.mode) {
+          setMode(savedActive.mode);
+        }
+      }
+    } catch (e) {
+      console.warn('[AutoTranscribe] Storage hydration warning:', e);
+    } finally {
+      setIsHydrated(true);
+    }
+  }, []);
+
+  // Flash autosave indicator on changes
+  const triggerSaveIndicator = useCallback(() => {
+    setSavedBadge(true);
+    const t = setTimeout(() => setSavedBadge(false), 1800);
+    return () => clearTimeout(t);
+  }, []);
+
   const handleModeChange = (newMode: AppMode) => {
     if (newMode === mode) return;
     setMode(newMode);
+    saveMode(newMode);
     tx.reset();
-    setSegments([]);
+  };
+
+  const handleScriptChange = (val: string) => {
+    setScript(val);
+    saveScriptDraft(val);
+  };
+
+  const handleTtsSettingsChange = (partial: Partial<TtsSettings>) => {
+    setTtsSettings((prev) => {
+      const updated = { ...prev, ...partial };
+      saveTtsSettings(updated);
+      return updated;
+    });
+  };
+
+  const handleTranscribeSettingsChange = (partial: Partial<TranscribeSettings>) => {
+    setTranscribeSettings((prev) => {
+      const updated = { ...prev, ...partial };
+      saveTranscribeSettings(updated);
+      return updated;
+    });
   };
 
   const handleFileSelected = useCallback((f: File, dur: number) => {
@@ -60,6 +149,9 @@ export default function HomePage() {
     setDuration(dur);
     tx.reset();
     setSegments([]);
+    setPersistedResult(null);
+    setPersistedJobId(null);
+    saveActiveState(null);
   }, [tx]);
 
   const handleClear = useCallback(() => {
@@ -67,26 +159,84 @@ export default function HomePage() {
     setDuration(0);
     tx.reset();
     setSegments([]);
+    setPersistedResult(null);
+    setPersistedJobId(null);
+    saveActiveState(null);
   }, [tx]);
+
+  const handleClearTranscript = useCallback(() => {
+    if (segments.length > 0 && !window.confirm('Are you sure you want to clear the active transcript?')) {
+      return;
+    }
+    setSegments([]);
+    setPersistedResult(null);
+    setPersistedJobId(null);
+    tx.reset();
+    saveActiveState(null);
+  }, [segments.length, tx]);
 
   const handleTranscribe = useCallback(async () => {
     if (!file) return;
     setSegments([]);
+    setPersistedResult(null);
+    setPersistedJobId(null);
     await tx.startTranscription(file, transcribeSettings);
   }, [file, transcribeSettings, tx]);
 
   const handleGenerateTts = useCallback(async () => {
     if (!script.trim()) return;
     setSegments([]);
+    setPersistedResult(null);
+    setPersistedJobId(null);
     await tx.startTTS(script, ttsSettings);
   }, [script, ttsSettings, tx]);
 
-  // When transcription/TTS completes, populate the editor
+  // When transcription/TTS completes, populate and persist
   const prevResultRef = useRef(tx.result);
-  if (tx.result && tx.result !== prevResultRef.current) {
-    prevResultRef.current = tx.result;
-    setSegments(tx.result.segments);
-  }
+  useEffect(() => {
+    if (tx.result && tx.result !== prevResultRef.current) {
+      prevResultRef.current = tx.result;
+      setSegments(tx.result.segments);
+      setPersistedResult(tx.result);
+      if (tx.result.job_id) {
+        setPersistedJobId(tx.result.job_id);
+      }
+
+      saveActiveState({
+        result: tx.result,
+        segments: tx.result.segments,
+        mode,
+        timestamp: Date.now(),
+      });
+
+      saveHistoryItem({
+        id: tx.result.job_id || `job_${Date.now()}`,
+        timestamp: Date.now(),
+        title: mode === 'tts' ? (script.slice(0, 45) || 'TTS Speech') : (file?.name || 'Audio Transcription'),
+        mode,
+        duration: tx.result.duration,
+        language: tx.result.language,
+        segmentsCount: tx.result.segments.length,
+        jobId: tx.result.job_id,
+        hasWav: tx.result.has_wav || mode === 'tts',
+      });
+
+      triggerSaveIndicator();
+    }
+  }, [tx.result, mode, script, file, triggerSaveIndicator]);
+
+  // Segment edits persistence
+  const handleSegmentsChange = useCallback((newSegs: Segment[]) => {
+    setSegments(newSegs);
+    const activeRes = tx.result || persistedResult;
+    saveActiveState({
+      result: activeRes ? { ...activeRes, segments: newSegs } : null,
+      segments: newSegs,
+      mode,
+      timestamp: Date.now(),
+    });
+    triggerSaveIndicator();
+  }, [tx.result, persistedResult, mode, triggerSaveIndicator]);
 
   const handleSeek = useCallback((time: number) => {
     playerRef.current?.seekTo(time);
@@ -102,13 +252,15 @@ export default function HomePage() {
   const isComplete = tx.status === 'complete';
   const showEditor = segments.length > 0;
 
-  // Determine audio source for player
+  // Persistent audio source for player
+  const activeJobId = tx.result?.job_id || persistedJobId;
   const playerFile = mode === 'transcribe' ? file : null;
   const playerSrc =
-    mode === 'tts' && tx.result?.job_id
-      ? getWavDownloadUrl(tx.result.job_id)
+    mode === 'tts' && activeJobId
+      ? getWavDownloadUrl(activeJobId)
       : null;
-  const showPlayer = isComplete && (!!playerFile || !!playerSrc);
+  const showPlayer = (isComplete || segments.length > 0) && (!!playerFile || !!playerSrc);
+  const activeResultObj = tx.result || persistedResult;
 
   return (
     <div className="app-layout">
@@ -147,7 +299,26 @@ export default function HomePage() {
             </button>
           </div>
 
-          <div className="header-actions">
+          <div className="header-actions" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            {isHydrated && (
+              <div
+                className="storage-indicator"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  fontSize: '0.75rem',
+                  color: savedBadge ? 'var(--success)' : 'var(--text-3)',
+                  transition: 'color 0.25s ease',
+                  userSelect: 'none',
+                }}
+                title="Your script, settings, and active transcripts are automatically persisted in local storage."
+              >
+                <HardDrive size={13} />
+                <span>{savedBadge ? 'Persisted' : 'Local Storage Active'}</span>
+              </div>
+            )}
+
             <a
               href="https://github.com/resemble-ai/chatterbox"
               target="_blank"
@@ -182,7 +353,7 @@ export default function HomePage() {
                 <h2 className="section-title">WhisperX Settings</h2>
                 <SettingsPanel
                   settings={transcribeSettings}
-                  onChange={(partial) => setTranscribeSettings((s) => ({ ...s, ...partial }))}
+                  onChange={handleTranscribeSettingsChange}
                   disabled={isProcessing}
                 />
               </section>
@@ -212,9 +383,9 @@ export default function HomePage() {
                 <h2 className="section-title">Chatterbox TTS Script</h2>
                 <TtsPanel
                   script={script}
-                  onScriptChange={setScript}
+                  onScriptChange={handleScriptChange}
                   settings={ttsSettings}
-                  onSettingsChange={(partial) => setTtsSettings((s) => ({ ...s, ...partial }))}
+                  onSettingsChange={handleTtsSettingsChange}
                   disabled={isProcessing}
                 />
               </section>
@@ -269,14 +440,38 @@ export default function HomePage() {
 
           {showEditor && (
             <>
-              <section className="content-section editor-header-section">
-                <h2 className="section-title">
-                  {mode === 'tts' ? 'Aligned Script & Timestamps' : 'Transcript'}
-                </h2>
+              <section className="content-section editor-header-section" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <h2 className="section-title" style={{ margin: 0 }}>
+                    {mode === 'tts' ? 'Aligned Script & Timestamps' : 'Transcript'}
+                  </h2>
+                  <button
+                    onClick={handleClearTranscript}
+                    className="btn-clear-transcript"
+                    title="Clear active transcript and start new"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '4px 8px',
+                      fontSize: '0.75rem',
+                      color: 'var(--text-3)',
+                      background: 'var(--surface-2)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <RotateCcw size={12} />
+                    <span>Clear / New</span>
+                  </button>
+                </div>
+
                 <ExportPanel
                   segments={segments}
-                  language={tx.result?.language}
-                  duration={tx.result?.duration}
+                  language={activeResultObj?.language}
+                  duration={activeResultObj?.duration}
                   filename={
                     mode === 'transcribe'
                       ? file?.name
@@ -284,15 +479,15 @@ export default function HomePage() {
                       ? `chatterbox_blend_${ttsSettings.voiceBlend.map((b) => b.voice).join('_')}`
                       : `chatterbox_${ttsSettings.voice}`
                   }
-                  jobId={tx.result?.job_id}
-                  hasWav={tx.result?.has_wav || mode === 'tts'}
+                  jobId={activeJobId ?? undefined}
+                  hasWav={activeResultObj?.has_wav || mode === 'tts'}
                 />
               </section>
 
               <section className="content-section content-section--grow">
                 <TranscriptEditor
                   segments={segments}
-                  onChange={setSegments}
+                  onChange={handleSegmentsChange}
                   currentTime={currentTime}
                   onSeek={handleSeek}
                 />
