@@ -214,15 +214,39 @@ def _synthesize_chatterbox(
     # Check if paralinguistic tags like [laugh], [chuckle], [cough] are in script
     has_paralinguistic = bool(re.search(r"\[(laugh|chuckle|cough|sigh|gasp|whisper|groan|snicker)\]", script, re.I))
 
-    if is_multilingual:
-        model = _get_chatterbox_model("mtl", device_req=device_req)
-        variant = "mtl"
-    elif has_paralinguistic:
-        model = _get_chatterbox_model("turbo", device_req=device_req)
-        variant = "turbo"
-    else:
-        model = _get_chatterbox_model("turbo", device_req=device_req)
-        variant = "turbo"
+    model = None
+    try:
+        if is_multilingual:
+            model = _get_chatterbox_model("mtl", device_req=device_req)
+            variant = "mtl"
+        elif has_paralinguistic:
+            model = _get_chatterbox_model("turbo", device_req=device_req)
+            variant = "turbo"
+        else:
+            model = _get_chatterbox_model("turbo", device_req=device_req)
+            variant = "turbo"
+    except Exception as err:
+        logger.warning(f"Chatterbox TTS model not ready, using neural pipeline fallback: {err}")
+        try:
+            from kokoro import KPipeline
+            clean_lang = lang[0] if lang and lang[0] in 'abefhipjz' else 'a'
+            pipeline = KPipeline(lang_code=clean_lang)
+            fallback_voice = 'af_heart' if not isinstance(voice, str) or not voice.startswith(('a', 'b', 'e', 'f', 'h', 'i', 'p', 'j', 'z')) else voice
+            generator = pipeline(script, voice=fallback_voice, speed=speed, split_pattern=r'\n+')
+            chunks = []
+            for _, _, audio in generator:
+                if isinstance(audio, torch.Tensor):
+                    chunks.append(audio.squeeze().cpu().numpy().astype(np.float32))
+                elif isinstance(audio, np.ndarray):
+                    chunks.append(audio.astype(np.float32))
+            if chunks:
+                combined_audio = np.concatenate(chunks, axis=0)
+                if output_path:
+                    sf.write(output_path, combined_audio, 24000)
+                return combined_audio
+        except Exception as kerr:
+            logger.error(f"Fallback pipeline error: {kerr}")
+            raise RuntimeError(f"TTS synthesis failed: {err}") from err
 
     voice_id = str(voice).strip() if isinstance(voice, str) else "default"
     _apply_voice_conditioning(model, voice_id, exaggeration=exaggeration)
