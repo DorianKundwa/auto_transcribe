@@ -58,15 +58,15 @@ if not exist "frontend\node_modules" (
     cd ..
 )
 
-for /f %%i in ('backend\.venv\Scripts\python.exe -c "import socket; s=socket.socket(); s.bind(('', 0)); print(s.getsockname()[1]); s.close()"') do set BACKEND_PORT=%%i
-for /f %%i in ('backend\.venv\Scripts\python.exe -c "import socket; s=socket.socket(); s.bind(('', 0)); print(s.getsockname()[1]); s.close()"') do set FRONTEND_PORT=%%i
+for /f %%i in ('backend\.venv\Scripts\python.exe -c "import socket; def f(p): s=socket.socket(); res=False; (lambda: None)(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); try: s.bind(('127.0.0.1',p)); res=True; except: pass; finally: s.close(); return p if res else f(p+1); print(f(8000))"') do set BACKEND_PORT=%%i
+for /f %%i in ('backend\.venv\Scripts\python.exe -c "import socket; def f(p): s=socket.socket(); res=False; (lambda: None)(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); try: s.bind(('127.0.0.1',p)); res=True; except: pass; finally: s.close(); return p if res else f(p+1); print(f(3000))"') do set FRONTEND_PORT=%%i
 
 echo.
 echo Starting Backend on http://localhost:%BACKEND_PORT% ...
 start "AutoTranscribe Backend" cmd /k "backend\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload --port %BACKEND_PORT%"
 
 echo Starting Frontend on http://localhost:%FRONTEND_PORT% ...
-start "AutoTranscribe Frontend" cmd /k "cd frontend && set NEXT_PUBLIC_API_BASE=http://localhost:%BACKEND_PORT%&& set PORT=%FRONTEND_PORT%&& npm run dev"
+start "AutoTranscribe Frontend" cmd /k "cd frontend && set NEXT_PUBLIC_API_BASE=http://localhost:%BACKEND_PORT%&& set PORT=%FRONTEND_PORT%&& npx next dev -p %FRONTEND_PORT%"
 
 echo.
 echo ==============================================

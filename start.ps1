@@ -109,15 +109,24 @@ if (-not (Test-Path (Join-Path $FrontendDir "node_modules"))) {
 
 # ── 4. Get Open Ports ────────────────────────────────────────────────────────
 Write-Step "Finding open ports..."
-function Get-FreePort {
-    $tcp = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
-    $tcp.Start()
-    $port = $tcp.LocalEndpoint.Port
-    $tcp.Stop()
-    return $port
+function Get-AvailablePort([int]$preferredPort) {
+    $port = $preferredPort
+    while ($port -lt 65535) {
+        try {
+            $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $port)
+            $listener.Start()
+            $listener.Stop()
+            return $port
+        } catch {
+            $port++
+        }
+    }
+    return $preferredPort
 }
-$BackendPort = Get-FreePort
-$FrontendPort = Get-FreePort
+
+$BackendPort  = Get-AvailablePort 8000
+$FrontendPort = Get-AvailablePort 3000
+
 $env:NEXT_PUBLIC_API_BASE = "http://localhost:$BackendPort"
 $env:PORT = $FrontendPort
 
@@ -144,10 +153,10 @@ if ($Prod) {
     Start-Process cmd.exe -ArgumentList "/c $buildCmd" -Wait
     
     Write-Step "Starting frontend (Production) →  http://localhost:$FrontendPort"
-    $frontendCmd = "title AutoTranscribe Frontend && cd /d ""$FrontendDir"" && set PORT=$FrontendPort&& set NEXT_PUBLIC_API_BASE=$env:NEXT_PUBLIC_API_BASE&& npm start"
+    $frontendCmd = "title AutoTranscribe Frontend && cd /d ""$FrontendDir"" && set PORT=$FrontendPort&& set NEXT_PUBLIC_API_BASE=$env:NEXT_PUBLIC_API_BASE&& npx next start -p $FrontendPort"
 } else {
     Write-Step "Starting frontend (Dev) →  http://localhost:$FrontendPort"
-    $frontendCmd = "title AutoTranscribe Frontend && cd /d ""$FrontendDir"" && set PORT=$FrontendPort&& set NEXT_PUBLIC_API_BASE=$env:NEXT_PUBLIC_API_BASE&& npm run dev"
+    $frontendCmd = "title AutoTranscribe Frontend && cd /d ""$FrontendDir"" && set PORT=$FrontendPort&& set NEXT_PUBLIC_API_BASE=$env:NEXT_PUBLIC_API_BASE&& npx next dev -p $FrontendPort"
 }
 
 Start-Process cmd.exe -ArgumentList "/k $frontendCmd"
