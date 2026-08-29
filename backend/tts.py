@@ -277,7 +277,7 @@ def _synthesize_chatterbox(
         try:
             from kokoro import KPipeline
             clean_lang = lang[0] if lang and lang[0] in 'abefhipjz' else 'a'
-            pipeline = KPipeline(lang_code=clean_lang)
+            pipeline = KPipeline(lang_code=clean_lang, repo_id="hexgrad/Kokoro-82M")
             mapped_voice = _resolve_kokoro_voice(voice)
             generator = pipeline(script, voice=mapped_voice, speed=speed, split_pattern=r'\n+')
             chunks = []
@@ -529,10 +529,12 @@ async def run_tts_and_transcribe(
         scaled = 40 + int(pct * 0.60)
         emit(stage, min(scaled, 99))
 
+    clean_target_lang = lang_code if lang_code and lang_code.lower() not in ("auto", "none") else "en"
+
     result = await run_transcription(
         audio_path=wav_path,
         model_name=model_name,
-        language=None,
+        language=clean_target_lang,
         device_req=device_req,
         pause_threshold=pause_threshold,
         progress_cb=scaled_cb,

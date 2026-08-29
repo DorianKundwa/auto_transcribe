@@ -303,5 +303,28 @@
     "neural_encoder": "Chatterbox-VoiceEncoder",
     "created_at": 1787747141.88337,
     "is_custom": true
+  },
+  "custom_8f82e559": {
+    "id": "custom_8f82e559",
+    "name": "emod",
+    "gender": "Male",
+    "lang": "American English",
+    "langCode": "a",
+    "flag": "🎙️",
+    "duration": 27.8,
+    "median_pitch": 91.3,
+    "f1": 397.7,
+    "f2": 1955.8,
+    "f3": 2957.1,
+    "spectral_centroid": 1279.8,
+    "warmth_score": 95.0,
+    "has_dvector": true,
+    "neural_encoder": "SV2TTS-3LSTM-GE2E",
+    "neural_dim": 256,
+    "clone_engine": "XTTS-Style Zero-Shot Conditioning",
+    "speaker_similarity": 97.6,
+    "formant_alignment": 96.1,
+    "created_at": 1788033944.5119174,
+    "is_custom": true
   }
 }

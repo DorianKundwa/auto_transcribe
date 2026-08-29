@@ -200,31 +200,55 @@ async def run_transcription(
     # 4. Word-level alignment                                             #
     # ------------------------------------------------------------------ #
     emit("aligning", 52)
-    align_key = f"{detected_language}:{device}"
-    if align_key not in _align_cache:
-        align_model, metadata = await asyncio.to_thread(
-            whisperx.load_align_model,
-            language_code=detected_language,
-            device=device,
-        )
-        _align_cache[align_key] = (align_model, metadata)
-    else:
-        align_model, metadata = _align_cache[align_key]
+    aligned_segments = result.get("segments", [])
 
-    emit("aligning", 60)
-    def _do_align():
-        with torch.inference_mode():
-            return whisperx.align(
-                result["segments"],
-                align_model,
-                metadata,
-                audio,
-                device,
-                return_char_alignments=False,
-            )
+    try:
+        align_key = f"{detected_language}:{device}"
+        align_model = None
+        metadata = None
 
-    aligned = await asyncio.to_thread(_do_align)
-    emit("aligning", 80)
+        if align_key in _align_cache:
+            align_model, metadata = _align_cache[align_key]
+        else:
+            try:
+                align_model, metadata = await asyncio.to_thread(
+                    whisperx.load_align_model,
+                    language_code=detected_language,
+                    device=device,
+                )
+                _align_cache[align_key] = (align_model, metadata)
+            except (ValueError, Exception) as align_err:
+                logger.warning(f"No direct align model for '{detected_language}' ({align_err}). Attempting fallback to 'en'...")
+                fallback_key = f"en:{device}"
+                if fallback_key in _align_cache:
+                    align_model, metadata = _align_cache[fallback_key]
+                else:
+                    align_model, metadata = await asyncio.to_thread(
+                        whisperx.load_align_model,
+                        language_code="en",
+                        device=device,
+                    )
+                    _align_cache[fallback_key] = (align_model, metadata)
+
+        emit("aligning", 60)
+        def _do_align():
+            with torch.inference_mode():
+                return whisperx.align(
+                    result["segments"],
+                    align_model,
+                    metadata,
+                    audio,
+                    device,
+                    return_char_alignments=False,
+                )
+
+        aligned = await asyncio.to_thread(_do_align)
+        aligned_segments = aligned.get("segments", result.get("segments", []))
+        emit("aligning", 80)
+
+    except Exception as exc:
+        logger.warning(f"Word-level alignment skipped for '{detected_language}': {exc}. Using base Whisper segments.")
+        aligned_segments = result.get("segments", [])
 
     # ------------------------------------------------------------------ #
     # 5. Sentence segmentation                                            #
@@ -232,7 +256,7 @@ async def run_transcription(
     emit("segmenting", 82)
     segments = await asyncio.to_thread(
         merge_whisperx_segments,
-        aligned["segments"],
+        aligned_segments,
         pause_threshold,
     )
     emit("segmenting", 95)
