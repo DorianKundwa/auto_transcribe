@@ -68,6 +68,7 @@ export interface TtsSettings {
   langCode: string;
   speed: number;
   exaggeration?: number;          // Chatterbox expressiveness factor 0.0 to 1.5
+  cfg_weight?: number;            // Speaker guidance weight / cross-language accent control 0.0 to 1.0
   model: ModelOption;
   device: DeviceOption;
   pauseThreshold: number;

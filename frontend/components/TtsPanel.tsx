@@ -323,7 +323,8 @@ export function TtsPanel({
         activeLangCode,
         settings.speed,
         previewText,
-        settings.exaggeration,
+        settings.exaggeration ?? 0.5,
+        settings.cfg_weight ?? 0.5,
         settings.dsp,
       );
 
@@ -856,6 +857,35 @@ export function TtsPanel({
                 className="setting-range"
                 disabled={disabled}
               />
+            </div>
+
+            {/* Speaker Guidance / Cross-Language CFG Weight Slider */}
+            <div className="speed-control-group" style={{ marginTop: '12px' }}>
+              <div className="slider-header">
+                <span className="setting-label" title="Controls reference prompt adherence. Set to 0.0 for cross-language voice cloning to prevent accent bleed, ~0.3 for expressive pacing, or 0.5 for balanced adherence.">
+                  Speaker Prompt Guidance (CFG)
+                </span>
+                <span className="slider-val">{(settings.cfg_weight ?? 0.5).toFixed(2)}</span>
+              </div>
+              <input
+                type="range"
+                min="0.0"
+                max="1.0"
+                step="0.05"
+                value={settings.cfg_weight ?? 0.5}
+                onChange={(e) => onSettingsChange({ cfg_weight: parseFloat(e.target.value) })}
+                className="setting-range"
+                disabled={disabled}
+              />
+              <div style={{ fontSize: '11px', color: 'var(--text-tertiary, #94a3b8)', marginTop: '4px' }}>
+                {(settings.cfg_weight ?? 0.5) <= 0.05
+                  ? '🌐 0.00: Cross-Language Decoupling (Prevents accent bleed)'
+                  : (settings.cfg_weight ?? 0.5) <= 0.35
+                  ? '🎭 Expressive & Dramatic Speech'
+                  : (settings.cfg_weight ?? 0.5) <= 0.65
+                  ? '✨ Balanced Prompt Adherence (Default)'
+                  : '🔒 Strict Reference Timbre Anchor'}
+              </div>
             </div>
           </div>
         ) : (

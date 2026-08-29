@@ -112,6 +112,7 @@ def _resolve_kokoro_voice(voice_id: Any) -> str:
 def _get_chatterbox_model(variant: str = "turbo", device_req: str = "auto") -> Optional[Any]:
     """
     Safely load Chatterbox model instance if available, otherwise return None.
+    Supports Chatterbox-Multilingual V3, Chatterbox Turbo, and standard Chatterbox TTS.
     """
     device = _resolve_device(device_req)
     cache_key = f"{variant}_{device}"
@@ -120,15 +121,28 @@ def _get_chatterbox_model(variant: str = "turbo", device_req: str = "auto") -> O
         return _chatterbox_cache[cache_key]
 
     try:
-        if variant == "mtl":
+        if variant in ("mtl", "v3", "multilingual"):
             from chatterbox.mtl_tts import ChatterboxMultilingualTTS
-            model = ChatterboxMultilingualTTS.from_pretrained(device=device)
+            try:
+                model = ChatterboxMultilingualTTS.from_pretrained(device=device, t3_model="v3")
+                logger.info(f"Loaded Chatterbox-Multilingual V3 on {device}.")
+            except Exception:
+                model = ChatterboxMultilingualTTS.from_pretrained(device=device)
+                logger.info(f"Loaded Chatterbox Multilingual on {device}.")
         elif variant == "turbo":
-            from chatterbox.tts_turbo import ChatterboxTurboTTS
-            model = ChatterboxTurboTTS.from_pretrained(device=device)
+            try:
+                from chatterbox.tts_turbo import ChatterboxTurboTTS
+                model = ChatterboxTurboTTS.from_pretrained(device=device)
+            except Exception:
+                from chatterbox.tts import ChatterboxTTS
+                model = ChatterboxTTS.from_pretrained(device=device)
         else:
             from chatterbox.tts import ChatterboxTTS
             model = ChatterboxTTS.from_pretrained(device=device)
+
+        # Suppress / bypass Perth watermarking if requested or supported on instance
+        if hasattr(model, "watermarker"):
+            model.watermarker = None
 
         _chatterbox_cache[cache_key] = model
         logger.info(f"Chatterbox TTS model ({variant}) ready on {device}.")
@@ -243,18 +257,20 @@ def _synthesize_chatterbox(
     lang_code: str = "en",
     speed: float = 1.0,
     exaggeration: float = 0.5,
+    cfg_weight: float = 0.5,
     output_path: Optional[str] = None,
     dsp_settings: Optional[Dict[str, Any]] = None,
     device_req: str = "auto",
 ) -> np.ndarray:
     """
-    Synthesize audio from script using Chatterbox TTS (24 kHz) and apply Voicebox DSP.
+    Synthesize audio from script using Chatterbox-Multilingual V3 / Turbo (24 kHz) and Voicebox DSP.
+    Supports cross-language voice cloning, audio_prompt_path, and CFG guidance.
     """
     if not script.strip():
         raise ValueError("Script text cannot be empty.")
 
     # Determine optimal model variant:
-    # If non-English language is specified, use multilingual Chatterbox
+    # If non-English language is specified, use multilingual Chatterbox V3
     lang = (lang_code or "en").lower().strip()
     is_multilingual = lang not in ("en", "a", "b", "american english", "british english")
 
@@ -269,8 +285,8 @@ def _synthesize_chatterbox(
         model = _get_chatterbox_model("turbo", device_req=device_req)
         variant = "turbo"
     else:
-        model = _get_chatterbox_model("turbo", device_req=device_req)
-        variant = "turbo"
+        model = _get_chatterbox_model("mtl" if is_multilingual else "turbo", device_req=device_req)
+        variant = "mtl" if is_multilingual else "turbo"
 
     clean_voice_id = str(voice).strip() if voice else "default"
     is_custom_voice = clean_voice_id.startswith("custom_") or (SAMPLES_DIR / f"{clean_voice_id}.wav").exists()
@@ -371,12 +387,17 @@ def _synthesize_chatterbox(
     _apply_voice_conditioning(model, voice_id, exaggeration=exaggeration)
 
     # Handle pause tags if present: e.g. [pause:0.5s]
-    # Split text into segments around pause tags
     pause_pattern = r"\[pause:(\d+(?:\.\d+)?)s?\]"
     tokens = re.split(pause_pattern, script)
 
     audio_chunks: list[np.ndarray] = []
     sr = getattr(model, "sr", 24000)
+
+    # Suppress watermarking if available
+    if hasattr(model, "watermarker"):
+        model.watermarker = None
+
+    prompt_path = str(ref_audio_sample) if ref_audio_sample and os.path.exists(str(ref_audio_sample)) else None
 
     # tokens alternates between text and pause durations
     i = 0
@@ -384,21 +405,31 @@ def _synthesize_chatterbox(
         text_chunk = tokens[i].strip()
         if text_chunk:
             with torch.inference_mode():
+                gen_kwargs: dict[str, Any] = {
+                    "exaggeration": float(exaggeration),
+                    "cfg_weight": float(cfg_weight),
+                }
+                if prompt_path:
+                    gen_kwargs["audio_prompt_path"] = prompt_path
+
                 if variant == "mtl":
-                    wav_tensor = model.generate(
-                        text_chunk,
-                        language_id=lang if lang in model.get_supported_languages() else "en",
-                        exaggeration=exaggeration,
-                    )
+                    supported_langs = getattr(model, "get_supported_languages", lambda: [])()
+                    lang_target = lang if lang in supported_langs else ("en" if "en" in supported_langs else lang)
+                    gen_kwargs["language_id"] = lang_target
+                    try:
+                        wav_tensor = model.generate(text_chunk, **gen_kwargs)
+                    except TypeError:
+                        wav_tensor = model.generate(text_chunk, language_id=lang_target, exaggeration=exaggeration)
                 elif variant == "turbo":
-                    wav_tensor = model.generate(
-                        text_chunk,
-                    )
+                    try:
+                        wav_tensor = model.generate(text_chunk, **{k: v for k, v in gen_kwargs.items() if k != "language_id"})
+                    except TypeError:
+                        wav_tensor = model.generate(text_chunk)
                 else:
-                    wav_tensor = model.generate(
-                        text_chunk,
-                        exaggeration=exaggeration,
-                    )
+                    try:
+                        wav_tensor = model.generate(text_chunk, **{k: v for k, v in gen_kwargs.items() if k != "language_id"})
+                    except TypeError:
+                        wav_tensor = model.generate(text_chunk, exaggeration=exaggeration)
 
                 if isinstance(wav_tensor, torch.Tensor):
                     chunk_np = wav_tensor.squeeze().cpu().numpy().astype(np.float32)
@@ -473,19 +504,20 @@ def synthesize_preview(
     speed: float = 1.0,
     text: Optional[str] = None,
     exaggeration: float = 0.5,
+    cfg_weight: float = 0.5,
     dsp_settings: Optional[Dict[str, Any]] = None,
 ) -> bytes:
     """
-    Fast audio preview generator for a selected Chatterbox voice or custom clone.
+    Fast audio preview generator for a selected Chatterbox-Multilingual V3 voice or custom clone.
     Stores and retrieves preview WAVs from disk so previews are never re-synthesized or redownloaded.
     """
     sample_text = (
         text.strip()
         if text and text.strip()
-        else "Hello! This is a voice preview powered by Resemble AI's Chatterbox TTS."
+        else "Hello! This is a voice preview powered by Resemble AI's Chatterbox-Multilingual V3 TTS."
     )
 
-    raw_key = f"{voice}|{lang_code}|{speed}|{exaggeration}|{sample_text}|{dsp_settings}".encode("utf-8")
+    raw_key = f"{voice}|{lang_code}|{speed}|{exaggeration}|{cfg_weight}|{sample_text}|{dsp_settings}".encode("utf-8")
     cache_hash = hashlib.sha256(raw_key).hexdigest()[:24]
     preview_file = PREVIEWS_DIR / f"preview_{cache_hash}.wav"
 
@@ -511,6 +543,7 @@ def synthesize_preview(
         lang_code=lang_code,
         speed=speed,
         exaggeration=exaggeration,
+        cfg_weight=cfg_weight,
         dsp_settings=dsp_settings,
     )
 
@@ -532,6 +565,29 @@ def synthesize_preview(
     return wav_bytes
 
 
+def inspect_audio_watermark(audio_path: str) -> dict[str, Any]:
+    """
+    Check if an audio file contains Resemble AI's Perth (Perceptual Threshold) watermark.
+    """
+    try:
+        import perth
+        import librosa
+        audio_data, sr = librosa.load(audio_path, sr=None)
+        watermarker = perth.PerthImplicitWatermarker()
+        score = watermarker.get_watermark(audio_data, sample_rate=sr)
+        return {
+            "has_watermark": bool(score > 0.5),
+            "score": float(score),
+            "engine": "PerthImplicitWatermarker",
+        }
+    except Exception as e:
+        return {
+            "has_watermark": False,
+            "score": 0.0,
+            "error": str(e),
+        }
+
+
 # ---------------------------------------------------------------------------
 # Combined Chatterbox TTS → WhisperX Pipeline
 # ---------------------------------------------------------------------------
@@ -542,6 +598,7 @@ async def run_tts_and_transcribe(
     lang_code: str = "en",
     speed: float = 1.0,
     exaggeration: float = 0.5,
+    cfg_weight: float = 0.5,
     model_name: str = "base",
     device_req: str = "auto",
     pause_threshold: float = 0.75,
@@ -567,7 +624,7 @@ async def run_tts_and_transcribe(
     wav_filename = f"tts_{wav_id}.wav"
     wav_path = str(TTS_DIR / wav_filename)
 
-    logger.info("Starting Chatterbox TTS synthesis (speed=%.1f, exaggeration=%.2f) …", speed, exaggeration)
+    logger.info("Starting Chatterbox TTS synthesis (speed=%.1f, exaggeration=%.2f, cfg=%.2f) …", speed, exaggeration, cfg_weight)
 
     await asyncio.to_thread(
         _synthesize_chatterbox,
@@ -576,6 +633,7 @@ async def run_tts_and_transcribe(
         lang_code=lang_code,
         speed=speed,
         exaggeration=exaggeration,
+        cfg_weight=cfg_weight,
         output_path=wav_path,
         dsp_settings=dsp_settings,
         device_req=device_req,

@@ -127,6 +127,7 @@ class TtsRequest(BaseModel):
     lang_code: str = Field("en", description="Language code (e.g. 'en', 'es', 'fr', 'de', 'ja', 'zh', etc.)")
     speed: float = Field(1.0, ge=0.5, le=2.0, description="Speech speed factor")
     exaggeration: float = Field(0.5, ge=0.0, le=2.0, description="Emotion and expressiveness exaggeration factor")
+    cfg_weight: float = Field(0.5, ge=0.0, le=1.0, description="Speaker guidance prompt weight / cross-language accent control")
     model: str = Field("base", description="WhisperX model size")
     device: str = Field("auto", description="Compute device: auto, cuda, or cpu")
     pause_threshold: float = Field(0.75, ge=0.1, le=5.0, description="Sentence pause threshold in seconds")
@@ -138,6 +139,7 @@ class TtsPreviewRequest(BaseModel):
     lang_code: str = Field("en", description="Language code")
     speed: float = Field(1.0, ge=0.5, le=2.0, description="Speech speed factor")
     exaggeration: float = Field(0.5, ge=0.0, le=2.0, description="Emotion expressiveness factor")
+    cfg_weight: float = Field(0.5, ge=0.0, le=1.0, description="Speaker guidance prompt weight / cross-language accent control")
     text: Optional[str] = Field(None, description="Optional preview text")
     dsp: Optional[Dict[str, Any]] = Field(None, description="Voicebox DSP FX & Delivery settings")
 
@@ -228,6 +230,7 @@ async def create_tts_job(
         lang_code=request.lang_code,
         speed=request.speed,
         exaggeration=request.exaggeration,
+        cfg_weight=request.cfg_weight,
         model_name=request.model,
         device_req=request.device,
         pause_threshold=request.pause_threshold,
@@ -251,6 +254,7 @@ async def preview_tts_voice(request: TtsPreviewRequest):
             speed=request.speed,
             text=request.text,
             exaggeration=request.exaggeration,
+            cfg_weight=request.cfg_weight,
             dsp_settings=request.dsp,
         )
         return Response(content=audio_bytes, media_type="audio/wav")
@@ -533,6 +537,7 @@ async def _run_tts_job(
     lang_code: str,
     speed: float,
     exaggeration: float,
+    cfg_weight: float,
     model_name: str,
     device_req: str,
     pause_threshold: float,
@@ -562,6 +567,7 @@ async def _run_tts_job(
             lang_code=lang_code,
             speed=speed,
             exaggeration=exaggeration,
+            cfg_weight=cfg_weight,
             model_name=model_name,
             device_req=device_req,
             pause_threshold=pause_threshold,
@@ -742,6 +748,34 @@ async def delete_job(job_id: str):
             pass
 
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# GET /api/tts/watermark/verify/{job_id}
+# ---------------------------------------------------------------------------
+@app.get("/api/tts/watermark/verify/{job_id}")
+async def verify_audio_watermark(job_id: str):
+    """Inspect audio for Resemble AI Perth neural watermark."""
+    job = _jobs.get(job_id)
+    wav_path = job.get("wav_path") if job else None
+
+    if not wav_path or not os.path.exists(wav_path):
+        candidates = [
+            TTS_DIR / f"tts_{job_id}.wav",
+            TTS_DIR / f"{job_id}.wav",
+            *TTS_DIR.glob(f"*{job_id}*.wav"),
+        ]
+        for c in candidates:
+            if c.exists():
+                wav_path = str(c)
+                break
+
+    if not wav_path or not os.path.exists(wav_path):
+        raise HTTPException(status_code=404, detail="Audio file not found")
+
+    from .tts import inspect_audio_watermark
+    res = await asyncio.to_thread(inspect_audio_watermark, wav_path)
+    return JSONResponse(content=res)
 
 
 

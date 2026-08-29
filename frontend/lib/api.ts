@@ -51,6 +51,7 @@ export async function submitTTS(
       lang_code: settings.langCode,
       speed: settings.speed,
       exaggeration: settings.exaggeration ?? 0.5,
+      cfg_weight: settings.cfg_weight ?? 0.5,
       model: settings.model,
       device: settings.device,
       pause_threshold: settings.pauseThreshold,
@@ -82,6 +83,7 @@ export async function previewTtsVoice(
   speed = 1.0,
   text?: string,
   exaggeration = 0.5,
+  cfgWeight = 0.5,
   dsp?: VoiceboxDspSettings,
 ): Promise<string> {
   const res = await fetch(`${API_BASE}/api/tts/preview`, {
@@ -95,6 +97,7 @@ export async function previewTtsVoice(
       speed,
       text,
       exaggeration,
+      cfg_weight: cfgWeight,
       dsp: dsp
         ? {
             delivery_preset: dsp.deliveryPreset,
@@ -115,6 +118,14 @@ export async function previewTtsVoice(
 
   const blob = await res.blob();
   return URL.createObjectURL(blob);
+}
+
+export async function inspectWatermark(jobId: string): Promise<{ has_watermark: boolean; score: number; engine?: string; error?: string }> {
+  const res = await fetch(`${API_BASE}/api/tts/watermark/verify/${jobId}`);
+  if (!res.ok) {
+    throw new Error('Watermark inspection failed');
+  }
+  return res.json();
 }
 
 export function subscribeProgress(

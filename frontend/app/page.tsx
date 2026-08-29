@@ -52,6 +52,7 @@ const DEFAULT_TTS_SETTINGS: TtsSettings = {
   langCode: 'en',
   speed: 1.0,
   exaggeration: 0.5,
+  cfg_weight: 0.5,
   model: 'base',
   device: 'auto',
   pauseThreshold: 0.75,
