@@ -46,30 +46,30 @@ export interface ChatterboxVoiceOption {
 
 export const CHATTERBOX_VOICES: ChatterboxVoiceOption[] = [
   // American English - Female
-  { id: 'default', name: 'Chatterbox Default (Recommended)', gender: 'Female', lang: 'American English', langCode: 'en', flag: '✨' },
-  { id: 'chatterbox_grace', name: 'Grace', gender: 'Female', lang: 'American English', langCode: 'en', flag: '🇺🇸' },
-  { id: 'chatterbox_bella', name: 'Bella', gender: 'Female', lang: 'American English', langCode: 'en', flag: '🇺🇸' },
-  { id: 'chatterbox_nicole', name: 'Nicole', gender: 'Female', lang: 'American English', langCode: 'en', flag: '🇺🇸' },
-  { id: 'chatterbox_sarah', name: 'Sarah', gender: 'Female', lang: 'American English', langCode: 'en', flag: '🇺🇸' },
-  { id: 'chatterbox_sky', name: 'Sky', gender: 'Female', lang: 'American English', langCode: 'en', flag: '🇺🇸' },
-  { id: 'chatterbox_emma', name: 'Emma', gender: 'Female', lang: 'American English', langCode: 'en', flag: '🇺🇸' },
+  { id: 'default', name: 'Chatterbox Default (Recommended)', gender: 'Female', lang: 'American English', langCode: 'en-US', flag: '✨' },
+  { id: 'chatterbox_grace', name: 'Grace', gender: 'Female', lang: 'American English', langCode: 'en-US', flag: '🇺🇸' },
+  { id: 'chatterbox_bella', name: 'Bella', gender: 'Female', lang: 'American English', langCode: 'en-US', flag: '🇺🇸' },
+  { id: 'chatterbox_nicole', name: 'Nicole', gender: 'Female', lang: 'American English', langCode: 'en-US', flag: '🇺🇸' },
+  { id: 'chatterbox_sarah', name: 'Sarah', gender: 'Female', lang: 'American English', langCode: 'en-US', flag: '🇺🇸' },
+  { id: 'chatterbox_sky', name: 'Sky', gender: 'Female', lang: 'American English', langCode: 'en-US', flag: '🇺🇸' },
 
   // American English - Male
-  { id: 'chatterbox_adam', name: 'Adam', gender: 'Male', lang: 'American English', langCode: 'en', flag: '🇺🇸' },
-  { id: 'chatterbox_michael', name: 'Michael', gender: 'Male', lang: 'American English', langCode: 'en', flag: '🇺🇸' },
-  { id: 'chatterbox_liam', name: 'Liam', gender: 'Male', lang: 'American English', langCode: 'en', flag: '🇺🇸' },
-  { id: 'chatterbox_eric', name: 'Eric', gender: 'Male', lang: 'American English', langCode: 'en', flag: '🇺🇸' },
-  { id: 'chatterbox_david', name: 'David', gender: 'Male', lang: 'American English', langCode: 'en', flag: '🇺🇸' },
+  { id: 'chatterbox_adam', name: 'Adam', gender: 'Male', lang: 'American English', langCode: 'en-US', flag: '🇺🇸' },
+  { id: 'chatterbox_michael', name: 'Michael', gender: 'Male', lang: 'American English', langCode: 'en-US', flag: '🇺🇸' },
+  { id: 'chatterbox_liam', name: 'Liam', gender: 'Male', lang: 'American English', langCode: 'en-US', flag: '🇺🇸' },
+  { id: 'chatterbox_eric', name: 'Eric', gender: 'Male', lang: 'American English', langCode: 'en-US', flag: '🇺🇸' },
+  { id: 'chatterbox_david', name: 'David', gender: 'Male', lang: 'American English', langCode: 'en-US', flag: '🇺🇸' },
 
   // British English - Female
-  { id: 'chatterbox_alice', name: 'Alice', gender: 'Female', lang: 'British English', langCode: 'en', flag: '🇬🇧' },
-  { id: 'chatterbox_lily', name: 'Lily', gender: 'Female', lang: 'British English', langCode: 'en', flag: '🇬🇧' },
-  { id: 'chatterbox_charlotte', name: 'Charlotte', gender: 'Female', lang: 'British English', langCode: 'en', flag: '🇬🇧' },
+  { id: 'chatterbox_emma', name: 'Emma', gender: 'Female', lang: 'British English', langCode: 'en-GB', flag: '🇬🇧' },
+  { id: 'chatterbox_alice', name: 'Alice', gender: 'Female', lang: 'British English', langCode: 'en-GB', flag: '🇬🇧' },
+  { id: 'chatterbox_lily', name: 'Lily', gender: 'Female', lang: 'British English', langCode: 'en-GB', flag: '🇬🇧' },
+  { id: 'chatterbox_charlotte', name: 'Charlotte', gender: 'Female', lang: 'British English', langCode: 'en-GB', flag: '🇬🇧' },
 
   // British English - Male
-  { id: 'chatterbox_daniel', name: 'Daniel', gender: 'Male', lang: 'British English', langCode: 'en', flag: '🇬🇧' },
-  { id: 'chatterbox_george', name: 'George', gender: 'Male', lang: 'British English', langCode: 'en', flag: '🇬🇧' },
-  { id: 'chatterbox_lewis', name: 'Lewis', gender: 'Male', lang: 'British English', langCode: 'en', flag: '🇬🇧' },
+  { id: 'chatterbox_daniel', name: 'Daniel', gender: 'Male', lang: 'British English', langCode: 'en-GB', flag: '🇬🇧' },
+  { id: 'chatterbox_george', name: 'George', gender: 'Male', lang: 'British English', langCode: 'en-GB', flag: '🇬🇧' },
+  { id: 'chatterbox_lewis', name: 'Lewis', gender: 'Male', lang: 'British English', langCode: 'en-GB', flag: '🇬🇧' },
 
   // Spanish
   { id: 'chatterbox_elena', name: 'Elena', gender: 'Female', lang: 'Spanish', langCode: 'es', flag: '🇪🇸' },
@@ -715,7 +715,14 @@ export function TtsPanel({
                 )}
 
                 <optgroup label="🇺🇸 American English">
-                  {CHATTERBOX_VOICES.filter((v) => v.langCode === 'en').map((v) => (
+                  {CHATTERBOX_VOICES.filter((v) => v.langCode === 'en-US' || v.langCode === 'en').map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.flag} {v.name} ({v.gender})
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="🇬🇧 British English">
+                  {CHATTERBOX_VOICES.filter((v) => v.langCode === 'en-GB').map((v) => (
                     <option key={v.id} value={v.id}>
                       {v.flag} {v.name} ({v.gender})
                     </option>

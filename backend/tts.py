@@ -109,6 +109,79 @@ def _resolve_kokoro_voice(voice_id: Any) -> str:
     return "af_heart"
 
 
+def _resolve_kokoro_lang_code(lang_code: str, voice_id: Any = None) -> str:
+    """
+    Properly maps language code and voice to Kokoro 1-letter language codes:
+      'a' -> American English (af_..., am_...)
+      'b' -> British English (bf_..., bm_...)
+      'e' -> Spanish (es)
+      'f' -> French (fr)
+      'h' -> Hindi (hi)
+      'i' -> Italian (it)
+      'p' -> Brazilian Portuguese (pt)
+      'j' -> Japanese (ja)
+      'z' -> Mandarin Chinese (zh)
+    """
+    clean_voice = str(voice_id).strip().lower() if voice_id else ""
+    if clean_voice.startswith(("bf_", "bm_")) or clean_voice in (
+        "chatterbox_alice", "chatterbox_lily", "chatterbox_charlotte",
+        "chatterbox_daniel", "chatterbox_george", "chatterbox_lewis",
+        "chatterbox_emma"
+    ):
+        return "b"
+
+    if clean_voice.startswith(("af_", "am_")) or clean_voice in (
+        "default", "chatterbox_default", "chatterbox_grace", "chatterbox_bella",
+        "chatterbox_nicole", "chatterbox_sarah", "chatterbox_sky",
+        "chatterbox_adam", "chatterbox_michael", "chatterbox_liam",
+        "chatterbox_eric", "chatterbox_david"
+    ):
+        return "a"
+
+    if not lang_code:
+        return "a"
+
+    clean_lang = str(lang_code).strip().lower()
+
+    # British English
+    if clean_lang in ("b", "en-gb", "gb", "uk", "british", "british english", "en_gb"):
+        return "b"
+
+    # American / General English
+    if clean_lang in ("a", "en", "en-us", "us", "american", "american english", "en_us", "english"):
+        return "a"
+
+    # Spanish
+    if clean_lang in ("e", "es", "es-es", "es-mx", "spa", "spanish", "español", "espanol"):
+        return "e"
+
+    # French
+    if clean_lang in ("f", "fr", "fr-fr", "fra", "fre", "french", "français", "francais"):
+        return "f"
+
+    # Hindi
+    if clean_lang in ("h", "hi", "hin", "hindi"):
+        return "h"
+
+    # Italian
+    if clean_lang in ("i", "it", "ita", "italian", "italiano"):
+        return "i"
+
+    # Portuguese
+    if clean_lang in ("p", "pt", "pt-br", "pt-pt", "por", "portuguese", "português", "portugues"):
+        return "p"
+
+    # Japanese
+    if clean_lang in ("j", "ja", "jpn", "japanese"):
+        return "j"
+
+    # Chinese
+    if clean_lang in ("z", "zh", "zh-cn", "zh-tw", "zho", "chi", "chinese", "mandarin"):
+        return "z"
+
+    return "a"
+
+
 def _get_chatterbox_model(variant: str = "turbo", device_req: str = "auto") -> Optional[Any]:
     """
     Safely load Chatterbox model instance if available, otherwise return None.
@@ -309,8 +382,6 @@ def _synthesize_chatterbox(
         # Seamless Neural Pipeline Fallback
         try:
             from kokoro import KPipeline
-            clean_lang = lang[0] if lang and lang[0] in 'abefhipjz' else 'a'
-            pipeline = KPipeline(lang_code=clean_lang, repo_id="hexgrad/Kokoro-82M")
 
             if is_custom_voice and custom_tensor is not None and isinstance(custom_tensor, torch.Tensor):
                 mapped_voice = custom_tensor
@@ -319,6 +390,9 @@ def _synthesize_chatterbox(
                 mapped_voice = "am_adam" if gender == "Male" else "af_bella"
             else:
                 mapped_voice = _resolve_kokoro_voice(voice)
+
+            clean_lang = _resolve_kokoro_lang_code(lang_code, voice_id=mapped_voice if isinstance(mapped_voice, str) else voice)
+            pipeline = KPipeline(lang_code=clean_lang, repo_id="hexgrad/Kokoro-82M")
 
             generator = pipeline(script, voice=mapped_voice, speed=speed, split_pattern=r'\n+')
             chunks = []
