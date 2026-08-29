@@ -31,19 +31,22 @@ if %ERRORLEVEL% neq 0 (
 )
 
 if not exist "backend\.venv\Scripts\python.exe" (
-    echo [1/3] Creating Python virtual environment...
-    python -m venv backend\.venv
+    echo [1/3] Creating Python virtual environment (Python 3.12)...
+    py -3.12 -m venv backend\.venv 2>nul
     if !ERRORLEVEL! neq 0 (
-        echo [ERROR] Failed to create virtual environment.
+        python -m venv backend\.venv
+    )
+    if !ERRORLEVEL! neq 0 (
+        echo [ERROR] Failed to create virtual environment. Please ensure Python 3.10+ is installed.
         pause
         exit /b 1
     )
 )
 
-backend\.venv\Scripts\python.exe -c "import fastapi, uvicorn, whisperx, kokoro, soundfile, librosa" >nul 2>nul
+backend\.venv\Scripts\python.exe -c "import fastapi, uvicorn, chatterbox, soundfile, librosa" >nul 2>nul
 if %ERRORLEVEL% neq 0 (
-    echo [2/3] Installing backend dependencies...
-    backend\.venv\Scripts\python.exe -m pip install -q -r backend\requirements.txt
+    echo [2/3] Installing backend dependencies (Chatterbox TTS + WhisperX)...
+    backend\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
 ) else (
     echo [2/3] Backend dependencies verified.
 )

@@ -989,24 +989,32 @@ def clone_voice_from_audio(
     profile = extract_acoustic_profile(audio_24k, sr=24000)
     detected_gender = gender if gender and gender != "auto" else ("Female" if profile["gender_tendency"] >= 0.50 else "Male")
 
-    # 4. Generate style vector tensor using SLSQP manifold optimization
-    style_tensor, matched_anchors = generate_cloned_voice_tensor(
-        profile=profile,
-        base_gender=detected_gender,
-        lang_code=lang_code,
-    )
-    torch.save(style_tensor, vector_path)
+    # 4. Generate Chatterbox Conditionals and save tensor
+    try:
+        from .tts import _get_chatterbox_model
+        chatterbox_m = _get_chatterbox_model("turbo", device_req="auto")
+        if hasattr(chatterbox_m, "prepare_conditionals"):
+            chatterbox_m.prepare_conditionals(str(sample_path))
+            if getattr(chatterbox_m, "conds", None) is not None:
+                chatterbox_m.conds.save(vector_path)
+    except Exception as e:
+        logger.warning(f"Could not precompute Chatterbox conditionals: {e}")
 
     lang_map = {
         "a": "American English",
         "b": "British English",
-        "e": "Spanish",
-        "f": "French",
-        "h": "Hindi",
-        "i": "Italian",
-        "p": "Portuguese",
-        "j": "Japanese",
-        "z": "Mandarin Chinese",
+        "en": "English",
+        "es": "Spanish",
+        "fr": "French",
+        "de": "German",
+        "it": "Italian",
+        "pt": "Portuguese",
+        "ja": "Japanese",
+        "zh": "Chinese",
+        "hi": "Hindi",
+        "ru": "Russian",
+        "ar": "Arabic",
+        "ko": "Korean",
     }
     lang_name = lang_map.get(lang_code, "English")
 
@@ -1025,8 +1033,7 @@ def clone_voice_from_audio(
         "spectral_centroid": profile["spectral_centroid"],
         "warmth_score": profile["warmth_score"],
         "has_dvector": d_vector is not None,
-        "neural_encoder": "SV2TTS-3LSTM-GE2E",
-        "neural_dim": 256,
+        "neural_encoder": "Chatterbox-VoiceEncoder",
         "created_at": time.time(),
         "is_custom": True,
     }
@@ -1035,6 +1042,6 @@ def clone_voice_from_audio(
     catalog[voice_id] = voice_record
     _save_catalog(catalog)
 
-    logger.info(f"Cloned custom voice registered: {voice_record['name']} ({voice_id}) with direct 256-D d-vector")
+    logger.info(f"Cloned custom voice registered: {voice_record['name']} ({voice_id}) with Chatterbox conditioning")
     return voice_record
 

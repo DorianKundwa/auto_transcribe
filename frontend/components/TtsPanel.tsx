@@ -34,7 +34,7 @@ import {
   Gauge,
 } from 'lucide-react';
 
-export interface KokoroVoiceOption {
+export interface ChatterboxVoiceOption {
   id: string;
   name: string;
   gender: 'Female' | 'Male';
@@ -44,82 +44,76 @@ export interface KokoroVoiceOption {
   isCustom?: boolean;
 }
 
-export const KOKORO_VOICES: KokoroVoiceOption[] = [
+export const CHATTERBOX_VOICES: ChatterboxVoiceOption[] = [
   // American English - Female
-  { id: 'af_heart', name: 'Heart (Recommended)', gender: 'Female', lang: 'American English', langCode: 'a', flag: '🇺🇸' },
-  { id: 'af_alloy', name: 'Alloy', gender: 'Female', lang: 'American English', langCode: 'a', flag: '🇺🇸' },
-  { id: 'af_aoede', name: 'Aoede', gender: 'Female', lang: 'American English', langCode: 'a', flag: '🇺🇸' },
-  { id: 'af_bella', name: 'Bella', gender: 'Female', lang: 'American English', langCode: 'a', flag: '🇺🇸' },
-  { id: 'af_jessica', name: 'Jessica', gender: 'Female', lang: 'American English', langCode: 'a', flag: '🇺🇸' },
-  { id: 'af_kore', name: 'Kore', gender: 'Female', lang: 'American English', langCode: 'a', flag: '🇺🇸' },
-  { id: 'af_nicole', name: 'Nicole', gender: 'Female', lang: 'American English', langCode: 'a', flag: '🇺🇸' },
-  { id: 'af_nova', name: 'Nova', gender: 'Female', lang: 'American English', langCode: 'a', flag: '🇺🇸' },
-  { id: 'af_river', name: 'River', gender: 'Female', lang: 'American English', langCode: 'a', flag: '🇺🇸' },
-  { id: 'af_sarah', name: 'Sarah', gender: 'Female', lang: 'American English', langCode: 'a', flag: '🇺🇸' },
-  { id: 'af_sky', name: 'Sky', gender: 'Female', lang: 'American English', langCode: 'a', flag: '🇺🇸' },
+  { id: 'default', name: 'Chatterbox Default (Recommended)', gender: 'Female', lang: 'American English', langCode: 'en', flag: '✨' },
+  { id: 'chatterbox_grace', name: 'Grace', gender: 'Female', lang: 'American English', langCode: 'en', flag: '🇺🇸' },
+  { id: 'chatterbox_bella', name: 'Bella', gender: 'Female', lang: 'American English', langCode: 'en', flag: '🇺🇸' },
+  { id: 'chatterbox_nicole', name: 'Nicole', gender: 'Female', lang: 'American English', langCode: 'en', flag: '🇺🇸' },
+  { id: 'chatterbox_sarah', name: 'Sarah', gender: 'Female', lang: 'American English', langCode: 'en', flag: '🇺🇸' },
+  { id: 'chatterbox_sky', name: 'Sky', gender: 'Female', lang: 'American English', langCode: 'en', flag: '🇺🇸' },
+  { id: 'chatterbox_emma', name: 'Emma', gender: 'Female', lang: 'American English', langCode: 'en', flag: '🇺🇸' },
 
   // American English - Male
-  { id: 'am_adam', name: 'Adam', gender: 'Male', lang: 'American English', langCode: 'a', flag: '🇺🇸' },
-  { id: 'am_echo', name: 'Echo', gender: 'Male', lang: 'American English', langCode: 'a', flag: '🇺🇸' },
-  { id: 'am_eric', name: 'Eric', gender: 'Male', lang: 'American English', langCode: 'a', flag: '🇺🇸' },
-  { id: 'am_fenrir', name: 'Fenrir', gender: 'Male', lang: 'American English', langCode: 'a', flag: '🇺🇸' },
-  { id: 'am_liam', name: 'Liam', gender: 'Male', lang: 'American English', langCode: 'a', flag: '🇺🇸' },
-  { id: 'am_michael', name: 'Michael', gender: 'Male', lang: 'American English', langCode: 'a', flag: '🇺🇸' },
-  { id: 'am_onyx', name: 'Onyx', gender: 'Male', lang: 'American English', langCode: 'a', flag: '🇺🇸' },
-  { id: 'am_puck', name: 'Puck', gender: 'Male', lang: 'American English', langCode: 'a', flag: '🇺🇸' },
-  { id: 'am_santa', name: 'Santa', gender: 'Male', lang: 'American English', langCode: 'a', flag: '🇺🇸' },
+  { id: 'chatterbox_adam', name: 'Adam', gender: 'Male', lang: 'American English', langCode: 'en', flag: '🇺🇸' },
+  { id: 'chatterbox_michael', name: 'Michael', gender: 'Male', lang: 'American English', langCode: 'en', flag: '🇺🇸' },
+  { id: 'chatterbox_liam', name: 'Liam', gender: 'Male', lang: 'American English', langCode: 'en', flag: '🇺🇸' },
+  { id: 'chatterbox_eric', name: 'Eric', gender: 'Male', lang: 'American English', langCode: 'en', flag: '🇺🇸' },
+  { id: 'chatterbox_david', name: 'David', gender: 'Male', lang: 'American English', langCode: 'en', flag: '🇺🇸' },
 
   // British English - Female
-  { id: 'bf_alice', name: 'Alice', gender: 'Female', lang: 'British English', langCode: 'b', flag: '🇬🇧' },
-  { id: 'bf_emma', name: 'Emma', gender: 'Female', lang: 'British English', langCode: 'b', flag: '🇬🇧' },
-  { id: 'bf_isabella', name: 'Isabella', gender: 'Female', lang: 'British English', langCode: 'b', flag: '🇬🇧' },
-  { id: 'bf_lily', name: 'Lily', gender: 'Female', lang: 'British English', langCode: 'b', flag: '🇬🇧' },
+  { id: 'chatterbox_alice', name: 'Alice', gender: 'Female', lang: 'British English', langCode: 'en', flag: '🇬🇧' },
+  { id: 'chatterbox_lily', name: 'Lily', gender: 'Female', lang: 'British English', langCode: 'en', flag: '🇬🇧' },
+  { id: 'chatterbox_charlotte', name: 'Charlotte', gender: 'Female', lang: 'British English', langCode: 'en', flag: '🇬🇧' },
 
   // British English - Male
-  { id: 'bm_daniel', name: 'Daniel', gender: 'Male', lang: 'British English', langCode: 'b', flag: '🇬🇧' },
-  { id: 'bm_fable', name: 'Fable', gender: 'Male', lang: 'British English', langCode: 'b', flag: '🇬🇧' },
-  { id: 'bm_george', name: 'George', gender: 'Male', lang: 'British English', langCode: 'b', flag: '🇬🇧' },
-  { id: 'bm_lewis', name: 'Lewis', gender: 'Male', lang: 'British English', langCode: 'b', flag: '🇬🇧' },
+  { id: 'chatterbox_daniel', name: 'Daniel', gender: 'Male', lang: 'British English', langCode: 'en', flag: '🇬🇧' },
+  { id: 'chatterbox_george', name: 'George', gender: 'Male', lang: 'British English', langCode: 'en', flag: '🇬🇧' },
+  { id: 'chatterbox_lewis', name: 'Lewis', gender: 'Male', lang: 'British English', langCode: 'en', flag: '🇬🇧' },
 
   // Spanish
-  { id: 'ef_dora', name: 'Dora', gender: 'Female', lang: 'Spanish', langCode: 'e', flag: '🇪🇸' },
-  { id: 'em_alex', name: 'Alex', gender: 'Male', lang: 'Spanish', langCode: 'e', flag: '🇪🇸' },
-  { id: 'em_santa', name: 'Santa', gender: 'Male', lang: 'Spanish', langCode: 'e', flag: '🇪🇸' },
+  { id: 'chatterbox_elena', name: 'Elena', gender: 'Female', lang: 'Spanish', langCode: 'es', flag: '🇪🇸' },
+  { id: 'chatterbox_mateo', name: 'Mateo', gender: 'Male', lang: 'Spanish', langCode: 'es', flag: '🇪🇸' },
 
   // French
-  { id: 'ff_siwis', name: 'Siwis', gender: 'Female', lang: 'French', langCode: 'f', flag: '🇫🇷' },
+  { id: 'chatterbox_camille', name: 'Camille', gender: 'Female', lang: 'French', langCode: 'fr', flag: '🇫🇷' },
+  { id: 'chatterbox_lucas', name: 'Lucas', gender: 'Male', lang: 'French', langCode: 'fr', flag: '🇫🇷' },
 
-  // Hindi
-  { id: 'hf_alpha', name: 'Alpha', gender: 'Female', lang: 'Hindi', langCode: 'h', flag: '🇮🇳' },
-  { id: 'hf_beta', name: 'Beta', gender: 'Female', lang: 'Hindi', langCode: 'h', flag: '🇮🇳' },
-  { id: 'hm_omega', name: 'Omega', gender: 'Male', lang: 'Hindi', langCode: 'h', flag: '🇮🇳' },
-  { id: 'hm_psi', name: 'Psi', gender: 'Male', lang: 'Hindi', langCode: 'h', flag: '🇮🇳' },
+  // German
+  { id: 'chatterbox_greta', name: 'Greta', gender: 'Female', lang: 'German', langCode: 'de', flag: '🇩🇪' },
+  { id: 'chatterbox_felix', name: 'Felix', gender: 'Male', lang: 'German', langCode: 'de', flag: '🇩🇪' },
 
   // Italian
-  { id: 'if_sara', name: 'Sara', gender: 'Female', lang: 'Italian', langCode: 'i', flag: '🇮🇹' },
-  { id: 'im_nicola', name: 'Nicola', gender: 'Male', lang: 'Italian', langCode: 'i', flag: '🇮🇹' },
+  { id: 'chatterbox_giulia', name: 'Giulia', gender: 'Female', lang: 'Italian', langCode: 'it', flag: '🇮🇹' },
+  { id: 'chatterbox_marco', name: 'Marco', gender: 'Male', lang: 'Italian', langCode: 'it', flag: '🇮🇹' },
 
   // Portuguese
-  { id: 'pf_dora', name: 'Dora (BR)', gender: 'Female', lang: 'Portuguese', langCode: 'p', flag: '🇧🇷' },
-  { id: 'pm_alex', name: 'Alex (BR)', gender: 'Male', lang: 'Portuguese', langCode: 'p', flag: '🇧🇷' },
-  { id: 'pm_santa', name: 'Santa (BR)', gender: 'Male', lang: 'Portuguese', langCode: 'p', flag: '🇧🇷' },
+  { id: 'chatterbox_mariana', name: 'Mariana', gender: 'Female', lang: 'Portuguese', langCode: 'pt', flag: '🇧🇷' },
+  { id: 'chatterbox_thiago', name: 'Thiago', gender: 'Male', lang: 'Portuguese', langCode: 'pt', flag: '🇧🇷' },
 
   // Japanese
-  { id: 'jf_alpha', name: 'Alpha', gender: 'Female', lang: 'Japanese', langCode: 'j', flag: '🇯🇵' },
-  { id: 'jf_gongitsune', name: 'Gongitsune', gender: 'Female', lang: 'Japanese', langCode: 'j', flag: '🇯🇵' },
-  { id: 'jf_nezumi', name: 'Nezumi', gender: 'Female', lang: 'Japanese', langCode: 'j', flag: '🇯🇵' },
-  { id: 'jf_tebukuro', name: 'Tebukuro', gender: 'Female', lang: 'Japanese', langCode: 'j', flag: '🇯🇵' },
-  { id: 'jm_kumo', name: 'Kumo', gender: 'Male', lang: 'Japanese', langCode: 'j', flag: '🇯🇵' },
+  { id: 'chatterbox_sakura', name: 'Sakura', gender: 'Female', lang: 'Japanese', langCode: 'ja', flag: '🇯🇵' },
+  { id: 'chatterbox_ren', name: 'Ren', gender: 'Male', lang: 'Japanese', langCode: 'ja', flag: '🇯🇵' },
 
   // Mandarin Chinese
-  { id: 'zf_xiaobei', name: 'Xiaobei', gender: 'Female', lang: 'Mandarin Chinese', langCode: 'z', flag: '🇨🇳' },
-  { id: 'zf_xiaoni', name: 'Xiaoni', gender: 'Female', lang: 'Mandarin Chinese', langCode: 'z', flag: '🇨🇳' },
-  { id: 'zf_xiaoxiao', name: 'Xiaoxiao', gender: 'Female', lang: 'Mandarin Chinese', langCode: 'z', flag: '🇨🇳' },
-  { id: 'zf_xiaoyi', name: 'Xiaoyi', gender: 'Female', lang: 'Mandarin Chinese', langCode: 'z', flag: '🇨🇳' },
-  { id: 'zm_yunjian', name: 'Yunjian', gender: 'Male', lang: 'Mandarin Chinese', langCode: 'z', flag: '🇨🇳' },
-  { id: 'zm_yunxi', name: 'Yunxi', gender: 'Male', lang: 'Mandarin Chinese', langCode: 'z', flag: '🇨🇳' },
-  { id: 'zm_yunxia', name: 'Yunxia', gender: 'Male', lang: 'Mandarin Chinese', langCode: 'z', flag: '🇨🇳' },
-  { id: 'zm_yunyang', name: 'Yunyang', gender: 'Male', lang: 'Mandarin Chinese', langCode: 'z', flag: '🇨🇳' },
+  { id: 'chatterbox_mei', name: 'Mei', gender: 'Female', lang: 'Mandarin Chinese', langCode: 'zh', flag: '🇨🇳' },
+  { id: 'chatterbox_bo', name: 'Bo', gender: 'Male', lang: 'Mandarin Chinese', langCode: 'zh', flag: '🇨🇳' },
+
+  // Hindi
+  { id: 'chatterbox_priya', name: 'Priya', gender: 'Female', lang: 'Hindi', langCode: 'hi', flag: '🇮🇳' },
+  { id: 'chatterbox_aarav', name: 'Aarav', gender: 'Male', lang: 'Hindi', langCode: 'hi', flag: '🇮🇳' },
+
+  // Arabic
+  { id: 'chatterbox_layla', name: 'Layla', gender: 'Female', lang: 'Arabic', langCode: 'ar', flag: '🇸🇦' },
+  { id: 'chatterbox_tariq', name: 'Tariq', gender: 'Male', lang: 'Arabic', langCode: 'ar', flag: '🇸🇦' },
+
+  // Russian
+  { id: 'chatterbox_anya', name: 'Anya', gender: 'Female', lang: 'Russian', langCode: 'ru', flag: '🇷🇺' },
+  { id: 'chatterbox_dmitri', name: 'Dmitri', gender: 'Male', lang: 'Russian', langCode: 'ru', flag: '🇷🇺' },
+
+  // Korean
+  { id: 'chatterbox_jiwoo', name: 'Jiwoo', gender: 'Female', lang: 'Korean', langCode: 'ko', flag: '🇰🇷' },
+  { id: 'chatterbox_minho', name: 'Minho', gender: 'Male', lang: 'Korean', langCode: 'ko', flag: '🇰🇷' },
 ];
 
 const MODELS: { value: ModelOption; label: string; note: string }[] = [
@@ -138,7 +132,7 @@ const DEVICES: { value: DeviceOption; label: string }[] = [
 ];
 
 const SAMPLE_SCRIPT =
-  'Welcome to AutoTranscribe powered by Kokoro TTS and WhisperX! ' +
+  'Welcome to AutoTranscribe powered by Resemble AI Chatterbox TTS and WhisperX! ' +
   'This pipeline generates natural high-fidelity speech from your script, ' +
   'creates a crystal-clear 24kHz audio track, and automatically aligns word-level timestamps.';
 
@@ -226,7 +220,7 @@ export function TtsPanel({
   }, []);
 
   // Combined voice options
-  const allVoiceOptions: KokoroVoiceOption[] = [
+  const allVoiceOptions: ChatterboxVoiceOption[] = [
     ...customVoices.map((cv) => ({
       id: cv.id,
       name: `${cv.name} (Cloned)`,
@@ -236,7 +230,7 @@ export function TtsPanel({
       flag: '✨',
       isCustom: true,
     })),
-    ...KOKORO_VOICES,
+    ...CHATTERBOX_VOICES,
   ];
 
   const wordCount = script.trim() ? script.trim().split(/\s+/).length : 0;
@@ -329,6 +323,7 @@ export function TtsPanel({
         activeLangCode,
         settings.speed,
         previewText,
+        settings.exaggeration,
         settings.dsp,
       );
 
@@ -615,7 +610,7 @@ export function TtsPanel({
           id="script-textarea"
           className="script-textarea"
           rows={6}
-          placeholder="Type or paste your script here… Synthesize speech with Kokoro or your cloned voice, and WhisperX will align precise word timestamps."
+          placeholder="Type or paste your script here… Synthesize speech with Chatterbox TTS or your cloned voice, with tags like [laugh] or [sigh], and WhisperX will align precise word timestamps."
           value={script}
           onChange={(e) => onScriptChange(e.target.value)}
           disabled={disabled}
@@ -623,18 +618,18 @@ export function TtsPanel({
 
         {/* Paralinguistic Expression Tags Bar */}
         <div className="paralinguistic-tags-bar">
-          <span className="paralinguistic-title">Voicebox Tags:</span>
+          <span className="paralinguistic-title">Chatterbox Tags:</span>
           {[
+            { tag: '[laugh]', label: '😂 Laugh' },
+            { tag: '[chuckle]', label: '😄 Chuckle' },
+            { tag: '[sigh]', label: '😮‍💨 Sigh' },
+            { tag: '[gasp]', label: '😲 Gasp' },
+            { tag: '[whisper]', label: '🤫 Whisper' },
+            { tag: '[cough]', label: '😷 Cough' },
+            { tag: '[groan]', label: '😩 Groan' },
+            { tag: '[snicker]', label: '😏 Snicker' },
             { tag: '[pause:0.5s]', label: '⏱️ Pause 0.5s' },
             { tag: '[pause:1.0s]', label: '⏱️ Pause 1.0s' },
-            { tag: '[whisper]', label: '🤫 Whisper' },
-            { tag: '[emphasis]', label: '🔥 Emphasis' },
-            { tag: '[shout]', label: '🗣️ Shout' },
-            { tag: '[sigh]', label: '😮‍💨 Sigh' },
-            { tag: '[laugh]', label: '😂 Laugh' },
-            { tag: '[gasp]', label: '😲 Gasp' },
-            { tag: '[fast]', label: '⚡ Fast' },
-            { tag: '[slow]', label: '🐢 Slow' },
           ].map((t) => (
             <button
               key={t.tag}
@@ -681,8 +676,8 @@ export function TtsPanel({
                   onSettingsChange({
                     mode: 'blend',
                     voiceBlend: [
-                      { voice: settings.voice || 'af_heart', weight: 60 },
-                      { voice: 'am_michael', weight: 40 },
+                      { voice: settings.voice || 'default', weight: 60 },
+                      { voice: 'chatterbox_michael', weight: 40 },
                     ],
                   });
                 } else {
@@ -719,63 +714,84 @@ export function TtsPanel({
                 )}
 
                 <optgroup label="🇺🇸 American English">
-                  {KOKORO_VOICES.filter((v) => v.langCode === 'a').map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.flag} {v.name} ({v.gender})
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="🇬🇧 British English">
-                  {KOKORO_VOICES.filter((v) => v.langCode === 'b').map((v) => (
+                  {CHATTERBOX_VOICES.filter((v) => v.langCode === 'en').map((v) => (
                     <option key={v.id} value={v.id}>
                       {v.flag} {v.name} ({v.gender})
                     </option>
                   ))}
                 </optgroup>
                 <optgroup label="🇪🇸 Spanish">
-                  {KOKORO_VOICES.filter((v) => v.langCode === 'e').map((v) => (
+                  {CHATTERBOX_VOICES.filter((v) => v.langCode === 'es').map((v) => (
                     <option key={v.id} value={v.id}>
                       {v.flag} {v.name} ({v.gender})
                     </option>
                   ))}
                 </optgroup>
                 <optgroup label="🇫🇷 French">
-                  {KOKORO_VOICES.filter((v) => v.langCode === 'f').map((v) => (
+                  {CHATTERBOX_VOICES.filter((v) => v.langCode === 'fr').map((v) => (
                     <option key={v.id} value={v.id}>
                       {v.flag} {v.name} ({v.gender})
                     </option>
                   ))}
                 </optgroup>
-                <optgroup label="🇮🇳 Hindi">
-                  {KOKORO_VOICES.filter((v) => v.langCode === 'h').map((v) => (
+                <optgroup label="🇩🇪 German">
+                  {CHATTERBOX_VOICES.filter((v) => v.langCode === 'de').map((v) => (
                     <option key={v.id} value={v.id}>
                       {v.flag} {v.name} ({v.gender})
                     </option>
                   ))}
                 </optgroup>
                 <optgroup label="🇮🇹 Italian">
-                  {KOKORO_VOICES.filter((v) => v.langCode === 'i').map((v) => (
+                  {CHATTERBOX_VOICES.filter((v) => v.langCode === 'it').map((v) => (
                     <option key={v.id} value={v.id}>
                       {v.flag} {v.name} ({v.gender})
                     </option>
                   ))}
                 </optgroup>
                 <optgroup label="🇧🇷 Portuguese">
-                  {KOKORO_VOICES.filter((v) => v.langCode === 'p').map((v) => (
+                  {CHATTERBOX_VOICES.filter((v) => v.langCode === 'pt').map((v) => (
                     <option key={v.id} value={v.id}>
                       {v.flag} {v.name} ({v.gender})
                     </option>
                   ))}
                 </optgroup>
                 <optgroup label="🇯🇵 Japanese">
-                  {KOKORO_VOICES.filter((v) => v.langCode === 'j').map((v) => (
+                  {CHATTERBOX_VOICES.filter((v) => v.langCode === 'ja').map((v) => (
                     <option key={v.id} value={v.id}>
                       {v.flag} {v.name} ({v.gender})
                     </option>
                   ))}
                 </optgroup>
                 <optgroup label="🇨🇳 Mandarin Chinese">
-                  {KOKORO_VOICES.filter((v) => v.langCode === 'z').map((v) => (
+                  {CHATTERBOX_VOICES.filter((v) => v.langCode === 'zh').map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.flag} {v.name} ({v.gender})
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="🇮🇳 Hindi">
+                  {CHATTERBOX_VOICES.filter((v) => v.langCode === 'hi').map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.flag} {v.name} ({v.gender})
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="🇸🇦 Arabic">
+                  {CHATTERBOX_VOICES.filter((v) => v.langCode === 'ar').map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.flag} {v.name} ({v.gender})
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="🇷🇺 Russian">
+                  {CHATTERBOX_VOICES.filter((v) => v.langCode === 'ru').map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.flag} {v.name} ({v.gender})
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="🇰🇷 Korean">
+                  {CHATTERBOX_VOICES.filter((v) => v.langCode === 'ko').map((v) => (
                     <option key={v.id} value={v.id}>
                       {v.flag} {v.name} ({v.gender})
                     </option>
@@ -822,6 +838,24 @@ export function TtsPanel({
                 <Search size={13} />
                 <span>Audition Voices ({allVoiceOptions.length})</span>
               </button>
+            </div>
+
+            {/* Emotion Exaggeration Slider */}
+            <div className="speed-control-group" style={{ marginTop: '12px' }}>
+              <div className="slider-header">
+                <span className="setting-label">Emotion Exaggeration</span>
+                <span className="slider-val">{(settings.exaggeration ?? 0.5).toFixed(2)}x</span>
+              </div>
+              <input
+                type="range"
+                min="0.0"
+                max="1.5"
+                step="0.05"
+                value={settings.exaggeration ?? 0.5}
+                onChange={(e) => onSettingsChange({ exaggeration: parseFloat(e.target.value) })}
+                className="setting-range"
+                disabled={disabled}
+              />
             </div>
           </div>
         ) : (
@@ -1552,7 +1586,7 @@ export function TtsPanel({
               <div>
                 <h3 className="voice-modal-title">Voice Library</h3>
                 <p className="voice-modal-sub">
-                  Audition Kokoro and custom cloned voices, or add them to your multi-voice mix.
+                  Audition Chatterbox and custom cloned voices, or add them to your multi-voice mix.
                 </p>
               </div>
               <button

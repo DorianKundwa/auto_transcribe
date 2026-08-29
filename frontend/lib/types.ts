@@ -67,6 +67,7 @@ export interface TtsSettings {
   voiceBlend: VoiceBlendItem[];    // multi-selected voices with weights
   langCode: string;
   speed: number;
+  exaggeration?: number;          // Chatterbox expressiveness factor 0.0 to 1.5
   model: ModelOption;
   device: DeviceOption;
   pauseThreshold: number;

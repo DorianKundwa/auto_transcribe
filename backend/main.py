@@ -87,9 +87,10 @@ def _new_job(
 
 class TtsRequest(BaseModel):
     script: str = Field(..., description="Script text to synthesize")
-    voice: Any = Field("af_heart", description="Single voice ID, blend string, or list of voice objects with weights")
-    lang_code: str = Field("a", description="Kokoro language code (e.g. 'a' for American English)")
+    voice: Any = Field("default", description="Single voice ID or reference path")
+    lang_code: str = Field("en", description="Language code (e.g. 'en', 'es', 'fr', 'de', 'ja', 'zh', etc.)")
     speed: float = Field(1.0, ge=0.5, le=2.0, description="Speech speed factor")
+    exaggeration: float = Field(0.5, ge=0.0, le=2.0, description="Emotion and expressiveness exaggeration factor")
     model: str = Field("base", description="WhisperX model size")
     device: str = Field("auto", description="Compute device: auto, cuda, or cpu")
     pause_threshold: float = Field(0.75, ge=0.1, le=5.0, description="Sentence pause threshold in seconds")
@@ -97,9 +98,10 @@ class TtsRequest(BaseModel):
 
 
 class TtsPreviewRequest(BaseModel):
-    voice: Any = Field("af_heart", description="Single voice ID, blend string, or list of voice objects with weights")
-    lang_code: str = Field("a", description="Kokoro language code")
+    voice: Any = Field("default", description="Single voice ID or reference path")
+    lang_code: str = Field("en", description="Language code")
     speed: float = Field(1.0, ge=0.5, le=2.0, description="Speech speed factor")
+    exaggeration: float = Field(0.5, ge=0.0, le=2.0, description="Emotion expressiveness factor")
     text: Optional[str] = Field(None, description="Optional preview text")
     dsp: Optional[Dict[str, Any]] = Field(None, description="Voicebox DSP FX & Delivery settings")
 
@@ -167,7 +169,7 @@ async def transcribe_audio(
 
 
 # ---------------------------------------------------------------------------
-# POST /api/tts  (Script -> Kokoro TTS -> WAV -> WhisperX)
+# POST /api/tts  (Script -> Chatterbox TTS -> WAV -> WhisperX)
 # ---------------------------------------------------------------------------
 @app.post("/api/tts")
 async def create_tts_job(
@@ -189,6 +191,7 @@ async def create_tts_job(
         voice=request.voice,
         lang_code=request.lang_code,
         speed=request.speed,
+        exaggeration=request.exaggeration,
         model_name=request.model,
         device_req=request.device,
         pause_threshold=request.pause_threshold,
@@ -199,7 +202,7 @@ async def create_tts_job(
 
 
 # ---------------------------------------------------------------------------
-# POST /api/tts/preview  (Fast voice or blend audio preview)
+# POST /api/tts/preview  (Fast voice audio preview)
 # ---------------------------------------------------------------------------
 @app.post("/api/tts/preview")
 async def preview_tts_voice(request: TtsPreviewRequest):
@@ -211,6 +214,7 @@ async def preview_tts_voice(request: TtsPreviewRequest):
             lang_code=request.lang_code,
             speed=request.speed,
             text=request.text,
+            exaggeration=request.exaggeration,
             dsp_settings=request.dsp,
         )
         return Response(content=audio_bytes, media_type="audio/wav")
@@ -492,6 +496,7 @@ async def _run_tts_job(
     voice: Any,
     lang_code: str,
     speed: float,
+    exaggeration: float,
     model_name: str,
     device_req: str,
     pause_threshold: float,
@@ -520,6 +525,7 @@ async def _run_tts_job(
             voice=voice,
             lang_code=lang_code,
             speed=speed,
+            exaggeration=exaggeration,
             model_name=model_name,
             device_req=device_req,
             pause_threshold=pause_threshold,
@@ -687,20 +693,12 @@ async def delete_job(job_id: str):
 def _preload_models():
     """Background task to preload models to disk and RAM."""
     try:
-        logger.info("Downloading/verifying Kokoro-82M and default voices...")
-        from huggingface_hub import snapshot_download
-        snapshot_download(
-            repo_id="hexgrad/Kokoro-82M",
-            allow_patterns=["config.json", "*.pth", "voices/af_heart.pt", "voices/am_michael.pt"]
-        )
-        
-        logger.info("Initializing English/British phonemizers...")
-        from backend.tts import _get_kokoro_pipeline
-        _get_kokoro_pipeline("a")
-        _get_kokoro_pipeline("b")
-        logger.info("Kokoro models preloaded successfully.")
+        logger.info("Initializing Chatterbox TTS models...")
+        from backend.tts import _get_chatterbox_model
+        _get_chatterbox_model("turbo")
+        logger.info("Chatterbox TTS models preloaded successfully.")
     except Exception as exc:
-        logger.error(f"Failed to preload models: {exc}")
+        logger.error(f"Failed to preload Chatterbox models: {exc}")
 
 @app.on_event("startup")
 async def startup_cleanup():

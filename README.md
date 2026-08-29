@@ -1,9 +1,9 @@
 # AutoTranscribe
 
-A local AI-powered studio that converts audio to transcripts and **synthesizes natural speech from scripts** with **Kokoro TTS + WhisperX word-level timestamp alignment**.
+A local AI-powered studio that converts audio to transcripts and **synthesizes natural speech from scripts** with **Resemble AI Chatterbox TTS + WhisperX word-level timestamp alignment**.
 
 ```
-Script ──▶ Kokoro TTS (24kHz WAV) ──▶ WhisperX Alignment ──▶ Word-Level Timestamps & Interactive Editor
+Script ──▶ Chatterbox TTS (24kHz WAV) ──▶ WhisperX Alignment ──▶ Word-Level Timestamps & Interactive Editor
 ```
 
 ```
@@ -16,15 +16,16 @@ Script ──▶ Kokoro TTS (24kHz WAV) ──▶ WhisperX Alignment ──▶ W
 
 - 🎙️ **Local Voice Cloning & Custom Voice Studio**:
   - Clone any voice from a 3–15 second audio upload (MP3, WAV, M4A, FLAC, OGG) or live browser microphone recording
-  - Instant acoustic profile & formant analysis, generating personalized style models
-  - Mix cloned voices with built-in voices in **Multi-Voice Blending** (e.g., 70% cloned + 30% Heart)
+  - Instant acoustic conditioning using Resemble AI's state-of-the-art Chatterbox zero-shot voice encoder
   - Full word-level timestamp alignment and subtitle exports on all cloned voice outputs
-- ✨ **Script → Kokoro TTS → WAV → WhisperX Timestamps**:
-  - High quality speech synthesis with [Kokoro-82M](https://github.com/hexgrad/kokoro) (Apache licensed)
+- ✨ **Script → Chatterbox TTS → WAV → WhisperX Timestamps**:
+  - High quality speech synthesis with [Resemble AI Chatterbox](https://github.com/resemble-ai/chatterbox) (MIT licensed)
+  - Emotional expressiveness and exaggeration control (0.0 to 1.5)
+  - Native paralinguistic expression tags (`[laugh]`, `[chuckle]`, `[sigh]`, `[gasp]`, `[whisper]`, `[cough]`, `[groan]`, `[snicker]`, `[pause:0.5s]`)
   - Word-level time alignment using WhisperX
   - Direct download of generated 24kHz **WAV audio**
   - Downloadable timestamps in **SRT, VTT, JSON, and TXT** formats
-  - Multi-language and multi-voice support (American & British English, Spanish, French, Hindi, Italian, Portuguese, Japanese, Chinese)
+  - Multi-language support across 23+ languages (English, Spanish, French, German, Italian, Portuguese, Japanese, Chinese, Hindi, Arabic, Russian, Korean, etc.)
 - 🎤 **Audio File Transcription**:
   - Upload MP3, WAV, M4A, AAC, FLAC, OGG, WebM
   - WhisperX transcription + phoneme alignment
@@ -32,7 +33,7 @@ Script ──▶ Kokoro TTS (24kHz WAV) ──▶ WhisperX Alignment ──▶ W
 - ✏️ **Full transcript editor** with undo/redo, merge, split, delete
 - 🎵 **Synchronized audio player** — click any word/line to seek; active line highlights during playback
 - 📤 **Comprehensive Exports** — TXT, SRT, VTT, JSON + audio WAV
-- ⚡ **Model caching** — WhisperX & Kokoro pipelines stay loaded in memory between jobs
+- ⚡ **Model caching** — WhisperX & Chatterbox models stay loaded in memory between jobs
 - 🔒 **100% local** — no audio or text is sent to third-party services
 
 ## Tech Stack
@@ -40,20 +41,16 @@ Script ──▶ Kokoro TTS (24kHz WAV) ──▶ WhisperX Alignment ──▶ W
 | Layer | Technology |
 |-------|-----------|
 | Frontend | Next.js 14, React, TypeScript, Tailwind CSS |
-| Backend | Python, FastAPI, uvicorn, sse-starlette |
-| TTS Engine | Kokoro-82M (`kokoro`, `soundfile`) |
+| Backend | Python 3.10+, FastAPI, uvicorn, sse-starlette |
+| TTS Engine | Resemble AI Chatterbox (`chatterbox-tts`, `soundfile`) |
 | Transcription & Alignment | WhisperX, PyTorch, Torchaudio |
 | Audio Processing | FFmpeg |
 
 ## Prerequisites
 
-- **Python 3.9–3.11**
+- **Python 3.10+** (Recommended: Python 3.12)
 - **Node.js 18+**
 - **FFmpeg** — must be on your `PATH`
-- **espeak-ng** — required by Kokoro for text-to-phoneme conversion:
-  - Windows: `winget install espeak-ng` or `choco install espeak`
-  - Linux: `sudo apt install espeak-ng`
-  - macOS: `brew install espeak`
 - **CUDA** (optional) — for GPU acceleration
 
 ## Setup

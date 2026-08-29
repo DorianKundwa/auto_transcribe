@@ -13,7 +13,7 @@ const TRANSCRIBE_STAGES: { key: ProgressStage; label: string }[] = [
 ];
 
 const TTS_STAGES: { key: ProgressStage; label: string }[] = [
-  { key: 'generating_audio', label: 'Kokoro TTS' },
+  { key: 'generating_audio', label: 'Chatterbox TTS' },
   { key: 'loading_model',    label: 'Loading model' },
   { key: 'transcribing',     label: 'Transcribing' },
   { key: 'aligning',         label: 'Aligning words' },

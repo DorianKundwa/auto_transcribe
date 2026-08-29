@@ -60,20 +60,25 @@ $VenvActivate = Join-Path $VenvDir "Scripts\Activate.ps1"
 $Requirements = Join-Path $BackendDir "requirements.txt"
 
 if (-not (Test-Path $VenvPython)) {
-    Write-Step "Creating Python virtual environment..."
-    python -m venv $VenvDir
-    if ($LASTEXITCODE -ne 0) {
-        Write-Err "Failed to create venv. Is Python 3.9+ installed?"
+    Write-Step "Creating Python virtual environment (Python 3.12)..."
+    if (Get-Command py -ErrorAction SilentlyContinue) {
+        & py -3.12 -m venv $VenvDir 2>$null
+    }
+    if (-not (Test-Path $VenvPython)) {
+        python -m venv $VenvDir
+    }
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $VenvPython)) {
+        Write-Err "Failed to create venv. Is Python 3.10+ installed?"
         exit 1
     }
     Write-Ok "Virtual environment created."
 }
 
 # Fast-check dependencies
-& $VenvPython -c "import fastapi, uvicorn, whisperx, kokoro, soundfile, librosa" 2>$null
+& $VenvPython -c "import fastapi, uvicorn, chatterbox, soundfile, librosa" 2>$null
 if ($LASTEXITCODE -ne 0) {
-    Write-Step "Installing / verifying Python packages..."
-    & $VenvPython -m pip install -q -r $Requirements
+    Write-Step "Installing / verifying Python packages (Chatterbox TTS + WhisperX)..."
+    & $VenvPython -m pip install -r $Requirements
     if ($LASTEXITCODE -ne 0) {
         Write-Err "pip install failed. See output above."
         exit 1

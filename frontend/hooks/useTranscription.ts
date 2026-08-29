@@ -19,7 +19,7 @@ export type TranscriptionStatus = 'idle' | 'uploading' | 'processing' | 'complet
 
 const STAGE_LABELS: Record<ProgressStage, string> = {
   uploading: 'Uploading audio…',
-  generating_audio: 'Synthesizing speech with Kokoro…',
+  generating_audio: 'Synthesizing speech with Chatterbox TTS…',
   loading_model: 'Loading WhisperX model…',
   transcribing: 'Transcribing audio…',
   aligning: 'Aligning word timestamps…',

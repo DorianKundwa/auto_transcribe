@@ -50,6 +50,7 @@ export async function submitTTS(
       voice: voicePayload,
       lang_code: settings.langCode,
       speed: settings.speed,
+      exaggeration: settings.exaggeration ?? 0.5,
       model: settings.model,
       device: settings.device,
       pause_threshold: settings.pauseThreshold,
@@ -80,6 +81,7 @@ export async function previewTtsVoice(
   langCode: string,
   speed = 1.0,
   text?: string,
+  exaggeration = 0.5,
   dsp?: VoiceboxDspSettings,
 ): Promise<string> {
   const res = await fetch(`${API_BASE}/api/tts/preview`, {
@@ -92,6 +94,7 @@ export async function previewTtsVoice(
       lang_code: langCode,
       speed,
       text,
+      exaggeration,
       dsp: dsp
         ? {
             delivery_preset: dsp.deliveryPreset,

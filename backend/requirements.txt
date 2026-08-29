@@ -8,10 +8,16 @@ torch>=2.0.0
 torchaudio>=2.0.0
 ffmpeg-python>=0.2.0
 numpy>=1.24.0
-kokoro>=0.9.4
+git+https://github.com/resemble-ai/chatterbox.git
+resemble-perth @ git+https://github.com/resemble-ai/Perth.git@master
+conformer>=0.3.2
+s3tokenizer>=0.3.0
+safetensors>=0.5.3
+diffusers>=0.29.0
+transformers>=4.40.0
+pyloudnorm>=0.1.1
+omegaconf>=2.3.0
 soundfile>=0.12.1
-phonemizer>=3.4.0
-espeakng_loader>=0.2.4
 loguru>=0.7.3
 num2words>=0.5.14
 spacy>=3.8.0

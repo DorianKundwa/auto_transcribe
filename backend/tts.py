@@ -1,12 +1,13 @@
 """
 tts.py
 ------
-Kokoro TTS pipeline for AutoTranscribe with multi-voice blending and instant preview.
+Resemble AI Chatterbox TTS pipeline for AutoTranscribe with zero-shot voice cloning,
+paralinguistic expression tags, emotion exaggeration control, and instant preview.
 
 Provides:
-  run_tts_and_transcribe(script, voice, lang_code, speed, model_name,
-                         device_req, pause_threshold, progress_cb)
-  synthesize_preview(voice, lang_code, speed, text) -> bytes (WAV)
+  run_tts_and_transcribe(script, voice, lang_code, speed, exaggeration, model_name,
+                         device_req, pause_threshold, dsp_settings, progress_cb)
+  synthesize_preview(voice, lang_code, speed, text, exaggeration, dsp_settings) -> bytes (WAV)
 """
 
 from __future__ import annotations
@@ -15,234 +16,273 @@ import asyncio
 import io
 import logging
 import os
+import re
 import uuid
 from pathlib import Path
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
+
+import numpy as np
+import soundfile as sf
+import torch
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Kokoro pipeline cache (one per lang_code)
+# Chatterbox Model & Pipeline Cache
 # ---------------------------------------------------------------------------
-_kokoro_cache: dict[str, Any] = {}   # key: lang_code
-_shared_kmodel: Any = None          # shared KModel instance
-_preview_cache: dict[str, bytes] = {} # key: hash string
+_chatterbox_cache: dict[str, Any] = {}   # key: (variant, device)
+_preview_cache: dict[str, bytes] = {}    # key: cache hash string
 
 TTS_DIR = Path(__file__).parent / "uploads" / "tts_wav"
 TTS_DIR.mkdir(parents=True, exist_ok=True)
 
-
-def _get_kokoro_pipeline(lang_code: str) -> Any:
-    """Load or reuse a KPipeline for the given lang_code."""
-    global _shared_kmodel
-    if lang_code not in _kokoro_cache:
-        try:
-            from kokoro import KPipeline  # type: ignore
-        except ImportError as exc:
-            raise RuntimeError(
-                "The 'kokoro' package is not installed. "
-                "Please pip install kokoro."
-            ) from exc
-
-        logger.info(f"Loading Kokoro pipeline for lang_code={lang_code!r} …")
-        if _shared_kmodel is None:
-            pipe = KPipeline(lang_code=lang_code)
-            _shared_kmodel = pipe.model
-        else:
-            pipe = KPipeline(lang_code=lang_code, model=_shared_kmodel)
-            
-        _kokoro_cache[lang_code] = pipe
-        logger.info("Kokoro pipeline ready.")
-
-    return _kokoro_cache[lang_code]
+CUSTOM_VOICES_DIR = Path(__file__).parent / "custom_voices"
+SAMPLES_DIR = CUSTOM_VOICES_DIR / "samples"
+VECTORS_DIR = CUSTOM_VOICES_DIR / "vectors"
 
 
-def _load_voice_unit(pipeline: Any, voice_name: str) -> Any:
-    """Load single voice by name, checking custom voices first then Kokoro built-in voices."""
-    voice_name = voice_name.strip()
+def _resolve_device(device_req: str = "auto") -> str:
+    """Resolve compute device: cuda if available and requested, otherwise cpu."""
+    if device_req == "cuda" and torch.cuda.is_available():
+        return "cuda"
+    if device_req == "auto":
+        return "cuda" if torch.cuda.is_available() else "cpu"
+    return "cpu"
+
+
+def _get_chatterbox_model(variant: str = "turbo", device_req: str = "auto") -> Any:
+    """
+    Load or reuse a Chatterbox model instance.
+    Variants:
+      - 'turbo': ChatterboxTurboTTS (low-latency, native paralinguistic tags [laugh], [chuckle], [cough], etc.)
+      - 'standard': ChatterboxTTS (English with emotion exaggeration control)
+      - 'mtl': ChatterboxMultilingualTTS (23+ languages)
+    """
+    device = _resolve_device(device_req)
+    cache_key = f"{variant}_{device}"
+
+    if cache_key in _chatterbox_cache:
+        return _chatterbox_cache[cache_key]
+
+    logger.info(f"Loading Chatterbox TTS model (variant={variant!r}, device={device!r}) …")
+
     try:
-        from .voice_cloner import load_custom_voice_tensor
-        custom_t = load_custom_voice_tensor(voice_name)
-        if custom_t is not None:
-            return custom_t
-    except Exception as e:
-        logger.debug(f"Could not load custom voice tensor for {voice_name}: {e}")
-
-    return pipeline.load_voice(voice_name)
-
-
-def _resolve_voice_tensor(pipeline: Any, voice: Any) -> Any:
-    """
-    Resolve single voice string, blend string syntax (e.g. 'af_heart:0.6,af_bella:0.4'),
-    or list of voices with weights into a style tensor. Supports custom cloned voices.
-    """
-    if isinstance(voice, str):
-        voice_str = voice.strip()
-        if "," in voice_str or ":" in voice_str:
-            parts = [p.strip() for p in voice_str.split(",") if p.strip()]
-            entries = []
-            for p in parts:
-                if ":" in p:
-                    v_name, w_str = p.split(":", 1)
-                    try:
-                        w = float(w_str)
-                    except ValueError:
-                        w = 1.0
-                    entries.append((v_name.strip(), w))
-                else:
-                    entries.append((p.strip(), 1.0))
-            if not entries:
-                return _load_voice_unit(pipeline, "af_heart")
-            total_w = sum(w for _, w in entries) or 1.0
-            blended = None
-            for v_name, w in entries:
-                norm_w = w / total_w
-                t = _load_voice_unit(pipeline, v_name)
-                if blended is None:
-                    blended = t * norm_w
-                else:
-                    blended += t * norm_w
-            return blended
+        if variant == "turbo":
+            from chatterbox.tts_turbo import ChatterboxTurboTTS
+            model = ChatterboxTurboTTS.from_pretrained(device=device)
+        elif variant == "mtl":
+            from chatterbox.mtl_tts import ChatterboxMultilingualTTS
+            model = ChatterboxMultilingualTTS.from_pretrained(device=device)
         else:
-            return _load_voice_unit(pipeline, voice_str)
+            from chatterbox.tts import ChatterboxTTS
+            model = ChatterboxTTS.from_pretrained(device=device)
 
-    elif isinstance(voice, list):
-        if not voice:
-            return _load_voice_unit(pipeline, "af_heart")
+        _chatterbox_cache[cache_key] = model
+        logger.info(f"Chatterbox TTS model ({variant}) ready on {device}.")
+        return model
 
-        entries = []
-        for item in voice:
-            if isinstance(item, dict):
-                v_name = item.get("voice") or item.get("id") or "af_heart"
-                try:
-                    w = float(item.get("weight", 1.0))
-                except (ValueError, TypeError):
-                    w = 1.0
-                entries.append((str(v_name).strip(), w))
-            elif isinstance(item, str):
-                entries.append((item.strip(), 1.0))
-
-        total_w = sum(w for _, w in entries) or 1.0
-        blended = None
-        for v_name, w in entries:
-            norm_w = w / total_w
-            t = _load_voice_unit(pipeline, v_name)
-            if blended is None:
-                blended = t * norm_w
-            else:
-                blended += t * norm_w
-        return blended
-
-    return voice
+    except Exception as exc:
+        logger.exception(f"Failed to load Chatterbox TTS model '{variant}': {exc}")
+        # Fallback to standard Chatterbox if Turbo fails
+        if variant != "standard":
+            try:
+                from chatterbox.tts import ChatterboxTTS
+                model = ChatterboxTTS.from_pretrained(device=device)
+                _chatterbox_cache[cache_key] = model
+                return model
+            except Exception:
+                pass
+        raise RuntimeError(f"Chatterbox TTS initialization failed: {exc}") from exc
 
 
-def _extract_custom_voice_id(voice: Any) -> Optional[str]:
-    """Find if a voice target references a custom cloned voice ID."""
-    if isinstance(voice, str):
-        for part in voice.split(","):
-            v_name = part.split(":")[0].strip()
-            if v_name.startswith("custom_"):
-                return v_name
-    elif isinstance(voice, list):
-        for item in voice:
-            if isinstance(item, dict):
-                v_name = str(item.get("voice") or item.get("id") or "").strip()
-                if v_name.startswith("custom_"):
-                    return v_name
-            elif isinstance(item, str) and item.strip().startswith("custom_"):
-                return item.strip()
+# ---------------------------------------------------------------------------
+# Voice & Conditioning Resolution
+# ---------------------------------------------------------------------------
+
+def _resolve_reference_audio(voice_id: str) -> Optional[str]:
+    """Find reference audio path for custom cloned voice or preset voice."""
+    if not voice_id:
+        return None
+
+    # 1. Custom voice sample
+    clean_id = voice_id.strip()
+    sample_file = SAMPLES_DIR / f"{clean_id}.wav"
+    if sample_file.exists():
+        return str(sample_file)
+
+    # 2. Check direct file path
+    if os.path.exists(clean_id):
+        return clean_id
+
     return None
 
 
+def _load_custom_conditionals(voice_id: str, device: str) -> Optional[Any]:
+    """Load pre-computed Conditionals tensor for custom voice if available."""
+    clean_id = voice_id.strip()
+    vector_file = VECTORS_DIR / f"{clean_id}.pt"
+    if vector_file.exists():
+        try:
+            from chatterbox.tts import Conditionals
+            conds = Conditionals.load(vector_file, map_location=device).to(device)
+            return conds
+        except Exception as e:
+            logger.debug(f"Could not load precomputed conditionals for {voice_id}: {e}")
+    return None
+
+
+def _apply_voice_conditioning(model: Any, voice: str, exaggeration: float = 0.5) -> None:
+    """Apply voice conditioning to Chatterbox model via reference audio or precomputed tensor."""
+    if not voice or voice in ("default", "builtin", "af_heart", "chatterbox_default"):
+        return
+
+    # Check for precomputed conditionals
+    device = getattr(model, "device", "cpu")
+    conds = _load_custom_conditionals(voice, device)
+    if conds is not None:
+        model.conds = conds
+        return
+
+    # Check for reference audio
+    ref_audio = _resolve_reference_audio(voice)
+    if ref_audio and os.path.exists(ref_audio):
+        model.prepare_conditionals(ref_audio, exaggeration=exaggeration)
+        return
+
+
 # ---------------------------------------------------------------------------
-# TTS synthesis
+# Text & Tag Preprocessing
 # ---------------------------------------------------------------------------
 
-def _synthesize(
-    script: str,
-    voice: Any,
-    lang_code: str,
-    speed: float,
-    output_path: str,
-    dsp_settings: Optional[Dict[str, Any]] = None,
-) -> None:
+def _preprocess_script(script: str) -> tuple[str, list[dict[str, Any]]]:
     """
-    Run Kokoro synthesis synchronously, apply Voicebox DSP effects, and write a 24 kHz WAV file.
-    Supports single voices, custom cloned voices, multi-voice blends, and paralinguistic tags.
+    Process script text, normalize whitespace and handle pause tags.
+    Returns cleaned text and list of pauses/segments.
     """
-    try:
-        import soundfile as sf  # type: ignore
-        import numpy as np
-    except ImportError as exc:
-        raise RuntimeError(
-            "The 'soundfile' or 'numpy' package is missing. "
-            "Run: pip install soundfile numpy"
-        ) from exc
-
-    from .voicebox_dsp import (
-        parse_paralinguistic_tags,
-        clean_script_for_tts,
-        apply_voicebox_dsp,
-        generate_vocal_gesture,
-        apply_style_audio_modifier,
+    # Normalize unicode quotes and dashes
+    script = (
+        script.replace("“", '"')
+        .replace("”", '"')
+        .replace("‘", "'")
+        .replace("’", "'")
+        .replace("—", "-")
+        .replace("–", "-")
     )
+    return script.strip(), []
 
-    pipeline = _get_kokoro_pipeline(lang_code)
-    resolved_voice = _resolve_voice_tensor(pipeline, voice)
 
-    parsed_tokens = parse_paralinguistic_tags(script)
-    audio_segments: list[np.ndarray] = []
+# ---------------------------------------------------------------------------
+# Synthesis Engine
+# ---------------------------------------------------------------------------
 
-    try:
-        import torch
-        with torch.inference_mode():
-            for tok in parsed_tokens:
-                if tok["type"] == "pause":
-                    silence_samples = int(24000 * tok.get("duration", 0.5))
-                    if silence_samples > 0:
-                        audio_segments.append(np.zeros(silence_samples, dtype=np.float32))
-                elif tok["type"] == "gesture":
-                    g_audio = generate_vocal_gesture(tok.get("gesture", "sigh"), sr=24000)
-                    if len(g_audio) > 0:
-                        audio_segments.append(g_audio)
-                elif tok["type"] == "text":
-                    sub_text = tok["text"]
-                    if not sub_text.strip():
-                        continue
-                    token_speed = speed * float(tok.get("speed_mult", 1.0))
-                    token_style = tok.get("style")
-                    chunks: list[Any] = []
-                    for _gs, _ps, audio in pipeline(sub_text, voice=resolved_voice, speed=token_speed):
-                        chunks.append(audio)
-                    if chunks:
-                        sub_audio = np.concatenate(chunks, axis=0)
-                        if token_style:
-                            sub_audio = apply_style_audio_modifier(sub_audio, style=token_style, sr=24000)
-                        audio_segments.append(sub_audio)
-    except Exception as exc:
-        err_str = str(exc).lower()
-        if "espeak" in err_str or "phonemizer" in err_str:
-            raise RuntimeError(
-                "Kokoro requires espeak-ng for text-to-phoneme conversion. "
-                "Install it: \n"
-                "  Windows: winget install espeak-ng  (or choco install espeak)\n"
-                "  Linux:   sudo apt-get install espeak-ng\n"
-                "  macOS:   brew install espeak\n"
-                f"Original error: {exc}"
-            ) from exc
-        raise
+def _synthesize_chatterbox(
+    script: str,
+    voice: Any = "default",
+    lang_code: str = "en",
+    speed: float = 1.0,
+    exaggeration: float = 0.5,
+    output_path: Optional[str] = None,
+    dsp_settings: Optional[Dict[str, Any]] = None,
+    device_req: str = "auto",
+) -> np.ndarray:
+    """
+    Synthesize audio from script using Chatterbox TTS (24 kHz) and apply Voicebox DSP.
+    """
+    if not script.strip():
+        raise ValueError("Script text cannot be empty.")
 
-    if not audio_segments:
-        raise RuntimeError("Kokoro produced no audio output for the given script.")
+    # Determine optimal model variant:
+    # If non-English language is specified, use multilingual Chatterbox
+    lang = (lang_code or "en").lower().strip()
+    is_multilingual = lang not in ("en", "a", "b", "american english", "british english")
 
-    audio_np = np.concatenate(audio_segments, axis=0)
+    # Check if paralinguistic tags like [laugh], [chuckle], [cough] are in script
+    has_paralinguistic = bool(re.search(r"\[(laugh|chuckle|cough|sigh|gasp|whisper|groan|snicker)\]", script, re.I))
 
-    # Apply Voicebox Studio DSP FX (EQ, Compression, Reverb, Pitch)
+    if is_multilingual:
+        model = _get_chatterbox_model("mtl", device_req=device_req)
+        variant = "mtl"
+    elif has_paralinguistic:
+        model = _get_chatterbox_model("turbo", device_req=device_req)
+        variant = "turbo"
+    else:
+        model = _get_chatterbox_model("turbo", device_req=device_req)
+        variant = "turbo"
+
+    voice_id = str(voice).strip() if isinstance(voice, str) else "default"
+    _apply_voice_conditioning(model, voice_id, exaggeration=exaggeration)
+
+    # Handle pause tags if present: e.g. [pause:0.5s]
+    # Split text into segments around pause tags
+    pause_pattern = r"\[pause:(\d+(?:\.\d+)?)s?\]"
+    tokens = re.split(pause_pattern, script)
+
+    audio_chunks: list[np.ndarray] = []
+    sr = getattr(model, "sr", 24000)
+
+    # tokens alternates between text and pause durations
+    i = 0
+    while i < len(tokens):
+        text_chunk = tokens[i].strip()
+        if text_chunk:
+            with torch.inference_mode():
+                if variant == "mtl":
+                    wav_tensor = model.generate(
+                        text_chunk,
+                        language_id=lang if lang in model.get_supported_languages() else "en",
+                        exaggeration=exaggeration,
+                    )
+                elif variant == "turbo":
+                    wav_tensor = model.generate(
+                        text_chunk,
+                    )
+                else:
+                    wav_tensor = model.generate(
+                        text_chunk,
+                        exaggeration=exaggeration,
+                    )
+
+                if isinstance(wav_tensor, torch.Tensor):
+                    chunk_np = wav_tensor.squeeze().cpu().numpy().astype(np.float32)
+                else:
+                    chunk_np = np.asarray(wav_tensor, dtype=np.float32)
+
+                if len(chunk_np) > 0:
+                    audio_chunks.append(chunk_np)
+
+        # Next token is pause duration (if any)
+        if i + 1 < len(tokens):
+            try:
+                pause_sec = float(tokens[i + 1])
+                silence_samples = int(sr * max(0.05, min(10.0, pause_sec)))
+                if silence_samples > 0:
+                    audio_chunks.append(np.zeros(silence_samples, dtype=np.float32))
+            except (ValueError, TypeError):
+                pass
+            i += 2
+        else:
+            i += 1
+
+    if not audio_chunks:
+        raise RuntimeError("Chatterbox TTS produced no audio output for the script.")
+
+    combined_audio = np.concatenate(audio_chunks, axis=0)
+
+    # Apply speed adjustment if speed != 1.0 using librosa
+    if abs(speed - 1.0) > 0.05:
+        try:
+            import librosa
+            combined_audio = librosa.effects.time_stretch(combined_audio, rate=speed)
+        except Exception as e:
+            logger.warning(f"Could not apply speed stretch: {e}")
+
+    # Apply Voicebox Studio DSP FX (EQ, Compression, Reverb, Pitch, Delivery Presets)
     if dsp_settings:
         try:
-            audio_np = apply_voicebox_dsp(
-                audio_np,
-                sr=24000,
+            from .voicebox_dsp import apply_voicebox_dsp
+            combined_audio = apply_voicebox_dsp(
+                combined_audio,
+                sr=sr,
                 preset=dsp_settings.get("delivery_preset", "studio_neutral"),
                 warmth=float(dsp_settings.get("warmth", 0.0)),
                 clarity=float(dsp_settings.get("clarity", 0.0)),
@@ -253,126 +293,63 @@ def _synthesize(
         except Exception as e:
             logger.warning(f"Could not apply Voicebox DSP effects: {e}")
 
-    sf.write(output_path, audio_np, 24000)
-    logger.info("TTS WAV written to %s (%.1f s)", output_path, len(audio_np) / 24000)
+    if output_path:
+        sf.write(output_path, combined_audio, sr)
+        logger.info(f"Chatterbox TTS WAV written to {output_path} ({len(combined_audio)/sr:.2f}s)")
+
+    return combined_audio
 
 
 def synthesize_preview(
-    voice: Any,
-    lang_code: str = "a",
+    voice: Any = "default",
+    lang_code: str = "en",
     speed: float = 1.0,
     text: Optional[str] = None,
+    exaggeration: float = 0.5,
     dsp_settings: Optional[Dict[str, Any]] = None,
 ) -> bytes:
     """
-    Fast audio preview generator for a single voice, custom voice, or voice blend.
+    Fast audio preview generator for a selected Chatterbox voice or custom clone.
     Returns in-memory WAV audio bytes with optional Voicebox DSP.
     """
     sample_text = (
         text.strip()
         if text and text.strip()
-        else "Hello! This is a preview of the selected Kokoro voice."
+        else "Hello! This is a voice preview powered by Resemble AI's Chatterbox TTS."
     )
-    
-    cache_key = f"{voice}|{lang_code}|{speed}|{sample_text}|{dsp_settings}"
+
+    cache_key = f"{voice}|{lang_code}|{speed}|{exaggeration}|{sample_text}|{dsp_settings}"
     if cache_key in _preview_cache:
         return _preview_cache[cache_key]
 
-    try:
-        import soundfile as sf
-        import numpy as np
-    except ImportError as exc:
-        raise RuntimeError(
-            "Missing 'soundfile' or 'numpy'. Run: pip install soundfile numpy"
-        ) from exc
-
-    from .voicebox_dsp import (
-        parse_paralinguistic_tags,
-        apply_voicebox_dsp,
-        generate_vocal_gesture,
-        apply_style_audio_modifier,
+    audio_np = _synthesize_chatterbox(
+        script=sample_text,
+        voice=voice,
+        lang_code=lang_code,
+        speed=speed,
+        exaggeration=exaggeration,
+        dsp_settings=dsp_settings,
     )
-
-    pipeline = _get_kokoro_pipeline(lang_code)
-    resolved_voice = _resolve_voice_tensor(pipeline, voice)
-
-    parsed_tokens = parse_paralinguistic_tags(sample_text)
-    audio_segments: list[np.ndarray] = []
-
-    try:
-        import torch
-        with torch.inference_mode():
-            for tok in parsed_tokens:
-                if tok["type"] == "pause":
-                    silence_samples = int(24000 * tok.get("duration", 0.5))
-                    if silence_samples > 0:
-                        audio_segments.append(np.zeros(silence_samples, dtype=np.float32))
-                elif tok["type"] == "gesture":
-                    g_audio = generate_vocal_gesture(tok.get("gesture", "sigh"), sr=24000)
-                    if len(g_audio) > 0:
-                        audio_segments.append(g_audio)
-                elif tok["type"] == "text":
-                    sub_text = tok["text"]
-                    if not sub_text.strip():
-                        continue
-                    token_speed = speed * float(tok.get("speed_mult", 1.0))
-                    token_style = tok.get("style")
-                    chunks: list[Any] = []
-                    for _gs, _ps, audio in pipeline(sub_text, voice=resolved_voice, speed=token_speed):
-                        chunks.append(audio)
-                    if chunks:
-                        sub_audio = np.concatenate(chunks, axis=0)
-                        if token_style:
-                            sub_audio = apply_style_audio_modifier(sub_audio, style=token_style, sr=24000)
-                        audio_segments.append(sub_audio)
-    except Exception as exc:
-        err_str = str(exc).lower()
-        if "espeak" in err_str or "phonemizer" in err_str:
-            raise RuntimeError(
-                "Kokoro requires espeak-ng for text-to-phoneme conversion. "
-                "Please install espeak-ng."
-            ) from exc
-        raise
-
-    if not audio_segments:
-        raise RuntimeError("Failed to synthesize preview audio.")
-
-    audio_np = np.concatenate(audio_segments, axis=0)
-
-    # Apply Voicebox DSP effects if provided
-    if dsp_settings:
-        try:
-            audio_np = apply_voicebox_dsp(
-                audio_np,
-                sr=24000,
-                preset=dsp_settings.get("delivery_preset", "studio_neutral"),
-                warmth=float(dsp_settings.get("warmth", 0.0)),
-                clarity=float(dsp_settings.get("clarity", 0.0)),
-                pitch_shift=float(dsp_settings.get("pitch_shift", 0.0)),
-                reverb=float(dsp_settings.get("reverb", 0.0)),
-                compression=dsp_settings.get("compression"),
-            )
-        except Exception as e:
-            logger.warning(f"Could not apply Voicebox DSP effects: {e}")
 
     buf = io.BytesIO()
     sf.write(buf, audio_np, 24000, format="WAV")
     buf.seek(0)
-    
+
     wav_bytes = buf.read()
     _preview_cache[cache_key] = wav_bytes
     return wav_bytes
 
 
 # ---------------------------------------------------------------------------
-# Combined TTS → WhisperX pipeline
+# Combined Chatterbox TTS → WhisperX Pipeline
 # ---------------------------------------------------------------------------
 
 async def run_tts_and_transcribe(
     script: str,
-    voice: Any = "af_heart",
-    lang_code: str = "a",
+    voice: Any = "default",
+    lang_code: str = "en",
     speed: float = 1.0,
+    exaggeration: float = 0.5,
     model_name: str = "base",
     device_req: str = "auto",
     pause_threshold: float = 0.75,
@@ -380,7 +357,7 @@ async def run_tts_and_transcribe(
     progress_cb: Optional[Callable[[str, int], None]] = None,
 ) -> dict[str, Any]:
     """
-    Full TTS + timestamp pipeline supporting voice blending and Voicebox DSP FX.
+    Full pipeline: Script -> Chatterbox TTS (24kHz WAV) -> WhisperX Alignment -> Word-Level Timestamps.
     """
     from .transcribe import run_transcription
 
@@ -391,13 +368,24 @@ async def run_tts_and_transcribe(
             except Exception:
                 pass
 
-    # 1. Kokoro TTS synthesis → WAV
+    # 1. Chatterbox TTS synthesis -> WAV
     emit("generating_audio", 0)
     wav_filename = f"tts_{uuid.uuid4()}.wav"
     wav_path = str(TTS_DIR / wav_filename)
 
-    logger.info("Starting Kokoro TTS synthesis (speed=%.1f) …", speed)
-    await asyncio.to_thread(_synthesize, script, voice, lang_code, speed, wav_path, dsp_settings)
+    logger.info("Starting Chatterbox TTS synthesis (speed=%.1f, exaggeration=%.2f) …", speed, exaggeration)
+
+    await asyncio.to_thread(
+        _synthesize_chatterbox,
+        script=script,
+        voice=voice,
+        lang_code=lang_code,
+        speed=speed,
+        exaggeration=exaggeration,
+        output_path=wav_path,
+        dsp_settings=dsp_settings,
+        device_req=device_req,
+    )
     emit("generating_audio", 40)
 
     # 2. WhisperX transcription + alignment

@@ -119,7 +119,7 @@ export default function HomePage() {
               {mode === 'tts' ? <Sparkles size={20} /> : <Mic2 size={20} />}
             </div>
             <span className="brand-name">AutoTranscribe</span>
-            <span className="brand-tag">Kokoro TTS + WhisperX</span>
+            <span className="brand-tag">Chatterbox TTS + WhisperX</span>
           </div>
 
           {/* Mode Switcher */}
@@ -148,12 +148,12 @@ export default function HomePage() {
 
           <div className="header-actions">
             <a
-              href="https://github.com/hexgrad/kokoro"
+              href="https://github.com/resemble-ai/chatterbox"
               target="_blank"
               rel="noopener noreferrer"
               className="header-link"
-              aria-label="Kokoro TTS repository"
-              title="Kokoro TTS GitHub"
+              aria-label="Chatterbox TTS repository"
+              title="Chatterbox TTS GitHub"
             >
               <ExternalLink size={18} />
             </a>
@@ -208,7 +208,7 @@ export default function HomePage() {
           ) : (
             <>
               <section className="sidebar-section">
-                <h2 className="section-title">Kokoro TTS Script</h2>
+                <h2 className="section-title">Chatterbox TTS Script</h2>
                 <TtsPanel
                   script={script}
                   onScriptChange={setScript}
@@ -280,8 +280,8 @@ export default function HomePage() {
                     mode === 'transcribe'
                       ? file?.name
                       : ttsSettings.mode === 'blend'
-                      ? `kokoro_blend_${ttsSettings.voiceBlend.map((b) => b.voice).join('_')}`
-                      : `kokoro_${ttsSettings.voice}`
+                      ? `chatterbox_blend_${ttsSettings.voiceBlend.map((b) => b.voice).join('_')}`
+                      : `chatterbox_${ttsSettings.voice}`
                   }
                   jobId={tx.result?.job_id}
                   hasWav={tx.result?.has_wav || mode === 'tts'}
@@ -312,7 +312,7 @@ export default function HomePage() {
               <p className="empty-sub">
                 {mode === 'tts' ? (
                   <>
-                    Enter a script on the left, pick a <strong>Kokoro voice</strong>, and click{' '}
+                    Enter a script on the left, pick a <strong>Chatterbox voice</strong>, and click{' '}
                     <strong>Synthesize & Align Timestamps</strong>. You'll get a downloadable 24kHz WAV audio file and precise word-level timestamps (SRT, VTT, JSON, TXT).
                   </>
                 ) : (
