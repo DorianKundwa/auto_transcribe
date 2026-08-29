@@ -1019,16 +1019,23 @@ def clone_voice_from_audio(
     profile = extract_acoustic_profile(audio_24k, sr=24000)
     detected_gender = gender if gender and gender != "auto" else ("Female" if profile["gender_tendency"] >= 0.50 else "Male")
 
-    # 4. Generate Chatterbox Conditionals and save tensor
+    # 4. Generate bespoke neural style tensor (.pt) & Chatterbox Conditionals
+    try:
+        bespoke_t, _ = generate_cloned_voice_tensor(profile, base_gender=detected_gender, lang_code=lang_code)
+        torch.save(bespoke_t, vector_path)
+        logger.info(f"Saved bespoke neural style tensor for {voice_id} ({detected_gender})")
+    except Exception as e:
+        logger.warning(f"Could not generate bespoke style tensor: {e}")
+
     try:
         from .tts import _get_chatterbox_model
         chatterbox_m = _get_chatterbox_model("turbo", device_req="auto")
-        if hasattr(chatterbox_m, "prepare_conditionals"):
+        if chatterbox_m and hasattr(chatterbox_m, "prepare_conditionals"):
             chatterbox_m.prepare_conditionals(str(sample_path))
             if getattr(chatterbox_m, "conds", None) is not None:
                 chatterbox_m.conds.save(vector_path)
     except Exception as e:
-        logger.warning(f"Could not precompute Chatterbox conditionals: {e}")
+        logger.debug(f"Chatterbox conditionals skipped: {e}")
 
     lang_map = {
         "a": "American English",

@@ -272,13 +272,38 @@ def _synthesize_chatterbox(
         model = _get_chatterbox_model("turbo", device_req=device_req)
         variant = "turbo"
 
+    clean_voice_id = str(voice).strip() if voice else "default"
+    is_custom_voice = clean_voice_id.startswith("custom_") or (SAMPLES_DIR / f"{clean_voice_id}.wav").exists()
+    custom_meta = None
+    custom_tensor = None
+    ref_audio_sample = None
+
+    if is_custom_voice:
+        try:
+            from .voice_cloner import get_custom_voice, load_custom_voice_tensor
+            custom_meta = get_custom_voice(clean_voice_id) or {}
+            custom_tensor = load_custom_voice_tensor(clean_voice_id)
+            sample_file = SAMPLES_DIR / f"{clean_voice_id}.wav"
+            if sample_file.exists():
+                ref_audio_sample = sample_file
+        except Exception as e:
+            logger.debug(f"Could not load custom voice metadata: {e}")
+
     if model is None:
         # Seamless Neural Pipeline Fallback
         try:
             from kokoro import KPipeline
             clean_lang = lang[0] if lang and lang[0] in 'abefhipjz' else 'a'
             pipeline = KPipeline(lang_code=clean_lang, repo_id="hexgrad/Kokoro-82M")
-            mapped_voice = _resolve_kokoro_voice(voice)
+
+            if is_custom_voice and custom_tensor is not None and isinstance(custom_tensor, torch.Tensor):
+                mapped_voice = custom_tensor
+            elif is_custom_voice and custom_meta:
+                gender = custom_meta.get("gender", "Male")
+                mapped_voice = "am_adam" if gender == "Male" else "af_bella"
+            else:
+                mapped_voice = _resolve_kokoro_voice(voice)
+
             generator = pipeline(script, voice=mapped_voice, speed=speed, split_pattern=r'\n+')
             chunks = []
             for _, _, audio in generator:
@@ -288,6 +313,30 @@ def _synthesize_chatterbox(
                     chunks.append(audio.astype(np.float32))
             if chunks:
                 combined_audio = np.concatenate(chunks, axis=0)
+
+                # For custom cloned voices: apply high-fidelity psychoacoustic timbre transfer
+                if is_custom_voice and ref_audio_sample:
+                    try:
+                        from .voice_cloner import apply_timbre_transfer
+                        ref_audio, _ = sf.read(str(ref_audio_sample), dtype="float32")
+                        combined_audio = apply_timbre_transfer(combined_audio, ref_audio, sr=24000, strength=0.75)
+                    except Exception as e:
+                        logger.warning(f"Could not apply custom timbre transfer: {e}")
+
+                # Pitch correction matching user's recorded pitch
+                if is_custom_voice and custom_meta and custom_meta.get("median_pitch"):
+                    try:
+                        recorded_pitch = float(custom_meta["median_pitch"])
+                        gender = custom_meta.get("gender", "Male")
+                        base_pitch = 125.0 if gender == "Male" else 210.0
+                        if recorded_pitch > 45.0:
+                            semitone_diff = 12.0 * np.log2(recorded_pitch / base_pitch)
+                            if abs(semitone_diff) > 0.4:
+                                import librosa
+                                combined_audio = librosa.effects.pitch_shift(combined_audio, sr=24000, n_steps=semitone_diff)
+                    except Exception:
+                        pass
+
                 # Apply speed adjustment if speed != 1.0 using librosa
                 if abs(speed - 1.0) > 0.05:
                     try:
@@ -376,6 +425,15 @@ def _synthesize_chatterbox(
         raise RuntimeError("Chatterbox TTS produced no audio output for the script.")
 
     combined_audio = np.concatenate(audio_chunks, axis=0)
+
+    # For custom cloned voices: apply high-fidelity psychoacoustic timbre transfer
+    if is_custom_voice and ref_audio_sample:
+        try:
+            from .voice_cloner import apply_timbre_transfer
+            ref_audio, _ = sf.read(str(ref_audio_sample), dtype="float32")
+            combined_audio = apply_timbre_transfer(combined_audio, ref_audio, sr=sr, strength=0.70)
+        except Exception as e:
+            logger.warning(f"Could not apply custom timbre transfer: {e}")
 
     # Apply speed adjustment if speed != 1.0 using librosa
     if abs(speed - 1.0) > 0.05:
