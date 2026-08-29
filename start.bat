@@ -43,9 +43,9 @@ if not exist "backend\.venv\Scripts\python.exe" (
     )
 )
 
-backend\.venv\Scripts\python.exe -c "import fastapi, uvicorn, chatterbox, soundfile, librosa" >nul 2>nul
+backend\.venv\Scripts\python.exe -c "import fastapi, uvicorn, whisperx, soundfile, librosa" >nul 2>nul
 if %ERRORLEVEL% neq 0 (
-    echo [2/3] Installing backend dependencies (Chatterbox TTS + WhisperX)...
+    echo [2/3] Installing backend dependencies (TTS + WhisperX)...
     backend\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
 ) else (
     echo [2/3] Backend dependencies verified.

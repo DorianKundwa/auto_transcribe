@@ -1,7 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Threading;
+using System.Collections.Generic;
 
 class AutoTranscribeLauncher
 {
@@ -15,6 +15,7 @@ class AutoTranscribeLauncher
         Console.WriteLine();
         Console.WriteLine("  ╔══════════════════════════════╗");
         Console.WriteLine("  ║     AutoTranscribe  v1.0     ║");
+        Console.WriteLine("  ║   Chatterbox TTS + WhisperX  ║");
         Console.WriteLine("  ╚══════════════════════════════╝");
         Console.ResetColor();
         Console.WriteLine();
@@ -24,17 +25,20 @@ class AutoTranscribeLauncher
         string batPath   = Path.Combine(exeDir, "start.bat");
         string ps1Path   = Path.Combine(exeDir, "start.ps1");
 
-        WriteInfo("Launching AutoTranscribe...");
-        Console.WriteLine();
-
-        bool useProd = false;
         bool forceBat = false;
-        for (int i = 0; i < args.Length; i++)
+        List<string> forwardArgs = new List<string>();
+
+        foreach (string rawArg in args)
         {
-            string a = args[i].ToLowerInvariant();
-            if (a == "-prod" || a == "--prod") useProd = true;
-            if (a == "-dev" || a == "--dev") useProd = false;
-            if (a == "-bat" || a == "--bat") forceBat = true;
+            string a = rawArg.Trim();
+            if (a.Equals("-bat", StringComparison.OrdinalIgnoreCase) || a.Equals("--bat", StringComparison.OrdinalIgnoreCase))
+            {
+                forceBat = true;
+            }
+            else
+            {
+                forwardArgs.Add(a);
+            }
         }
 
         ProcessStartInfo psi = null;
@@ -42,7 +46,12 @@ class AutoTranscribeLauncher
         if (!forceBat && File.Exists(ps1Path))
         {
             string psExe = FindPowerShell() ?? "powershell.exe";
-            string psArgs = string.Format("-ExecutionPolicy Bypass -File \"{0}\"{1}", ps1Path, useProd ? " -Prod" : "");
+            string extraArgs = forwardArgs.Count > 0 ? " " + string.Join(" ", forwardArgs) : "";
+            string psArgs = string.Format("-ExecutionPolicy Bypass -File \"{0}\"{1}", ps1Path, extraArgs);
+            
+            WriteInfo("Launching AutoTranscribe via PowerShell engine...");
+            Console.WriteLine();
+
             psi = new ProcessStartInfo
             {
                 FileName               = psExe,
@@ -56,6 +65,9 @@ class AutoTranscribeLauncher
         }
         else if (File.Exists(batPath))
         {
+            WriteInfo("Launching AutoTranscribe via Command Prompt batch engine...");
+            Console.WriteLine();
+
             psi = new ProcessStartInfo
             {
                 FileName               = "cmd.exe",
@@ -69,7 +81,7 @@ class AutoTranscribeLauncher
         }
         else
         {
-            WriteError("Neither start.ps1 nor start.bat found in application folder.");
+            WriteError("Neither start.ps1 nor start.bat found in application folder: " + exeDir);
             Console.WriteLine();
             Pause();
             return;
@@ -90,7 +102,7 @@ class AutoTranscribeLauncher
         }
         catch (Exception ex)
         {
-            WriteError("Error: " + ex.Message);
+            WriteError("Error executing launcher: " + ex.Message);
             Console.WriteLine();
             Pause();
         }

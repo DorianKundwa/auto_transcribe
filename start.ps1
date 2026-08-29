@@ -2,17 +2,19 @@
 param (
     [switch]$Prod,
     [switch]$DryRun,
+    [switch]$Open,
     [switch]$Help
 )
 
 # AutoTranscribe Launcher
-# Usage: .\start.ps1 [-Prod] [-DryRun] [-Help]
+# Usage: .\start.ps1 [-Prod] [-DryRun] [-Open] [-Help]
 
 if ($Help) {
     Write-Host "AutoTranscribe Launcher"
-    Write-Host "Usage: .\start.ps1 [-Prod] [-DryRun] [-Help]"
+    Write-Host "Usage: .\start.ps1 [-Prod] [-DryRun] [-Open] [-Help]"
     Write-Host "  -Prod   : Build and start Next.js frontend in production mode"
     Write-Host "  -DryRun : Verify prerequisites and dependencies without launching servers"
+    Write-Host "  -Open   : Automatically open default browser when ready"
     Write-Host "  -Help   : Display this help message"
     exit 0
 }
@@ -75,9 +77,9 @@ if (-not (Test-Path $VenvPython)) {
 }
 
 # Fast-check dependencies
-& $VenvPython -c "import fastapi, uvicorn, chatterbox, soundfile, librosa" 2>$null
+& $VenvPython -c "import fastapi, uvicorn, whisperx, soundfile, librosa" 2>$null
 if ($LASTEXITCODE -ne 0) {
-    Write-Step "Installing / verifying Python packages (Chatterbox TTS + WhisperX)..."
+    Write-Step "Installing / verifying Python packages (TTS + WhisperX)..."
     & $VenvPython -m pip install -r $Requirements
     if ($LASTEXITCODE -ne 0) {
         Write-Err "pip install failed. See output above."
@@ -149,6 +151,11 @@ if ($Prod) {
 }
 
 Start-Process cmd.exe -ArgumentList "/k $frontendCmd"
+
+if ($Open) {
+    Start-Sleep -Seconds 3
+    Start-Process "http://localhost:$FrontendPort"
+}
 
 # ── 7. Done ──────────────────────────────────────────────────────────────────
 
