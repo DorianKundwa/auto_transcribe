@@ -42,6 +42,51 @@ _asr_cache: dict[str, Any] = {}       # key: "<model_name>:<device>"
 _align_cache: dict[str, Any] = {}     # key: "<language>:<device>"
 
 
+WHISPER_ACCEPTED_LANGS = {
+    'af', 'am', 'ar', 'as', 'az', 'ba', 'be', 'bg', 'bn', 'bo', 'br', 'bs', 'ca', 'cs', 'cy', 'da',
+    'de', 'el', 'en', 'es', 'et', 'eu', 'fa', 'fi', 'fo', 'fr', 'gl', 'gu', 'ha', 'haw', 'he', 'hi',
+    'hr', 'ht', 'hu', 'hy', 'id', 'is', 'it', 'ja', 'jw', 'ka', 'kk', 'km', 'kn', 'ko', 'la', 'lb',
+    'ln', 'lo', 'lt', 'lv', 'mg', 'mi', 'mk', 'ml', 'mn', 'mr', 'ms', 'mt', 'my', 'ne', 'nl', 'nn',
+    'no', 'oc', 'pa', 'pl', 'ps', 'pt', 'ro', 'ru', 'sa', 'sd', 'si', 'sk', 'sl', 'sn', 'so', 'sq',
+    'sr', 'su', 'sv', 'sw', 'ta', 'te', 'tg', 'th', 'tk', 'tl', 'tr', 'tt', 'uk', 'ur', 'uz', 'vi',
+    'yi', 'yo', 'zh', 'yue'
+}
+
+
+def sanitize_whisper_lang(lang: Optional[str]) -> Optional[str]:
+    """
+    Sanitize language codes (e.g. 'en-GB', 'en-US', 'es-ES', 'b', 'a') to accepted Whisper 2-letter codes.
+    """
+    if not lang or str(lang).strip().lower() in ("auto", "none", ""):
+        return None
+    clean = str(lang).strip().lower().replace("_", "-")
+    if clean in WHISPER_ACCEPTED_LANGS:
+        return clean
+    if "-" in clean:
+        prefix = clean.split("-")[0]
+        if prefix in WHISPER_ACCEPTED_LANGS:
+            return prefix
+    if clean in ("b", "a", "uk", "us", "gb", "english", "american english", "british english"):
+        return "en"
+    if clean in ("spanish", "espanol", "español"):
+        return "es"
+    if clean in ("french", "francais", "français"):
+        return "fr"
+    if clean in ("german", "deutsch"):
+        return "de"
+    if clean in ("italian", "italiano"):
+        return "it"
+    if clean in ("portuguese", "portugues", "português"):
+        return "pt"
+    if clean in ("japanese", "nihongo"):
+        return "ja"
+    if clean in ("chinese", "mandarin", "cantonese"):
+        return "zh"
+    if len(clean) >= 2 and clean[:2] in WHISPER_ACCEPTED_LANGS:
+        return clean[:2]
+    return None
+
+
 def _get_device(requested: str) -> tuple[str, int]:
     """
     Resolve device string to (device_str, compute_int).
@@ -179,8 +224,9 @@ async def run_transcription(
     emit("transcribing", 25)
 
     transcribe_kwargs: dict[str, Any] = {}
-    if language and language != "auto":
-        transcribe_kwargs["language"] = language
+    clean_whisper_lang = sanitize_whisper_lang(language)
+    if clean_whisper_lang:
+        transcribe_kwargs["language"] = clean_whisper_lang
 
     import torch
 
@@ -193,7 +239,7 @@ async def run_transcription(
             )
 
     result = await asyncio.to_thread(_do_transcribe)
-    detected_language: str = result.get("language", language or "en")
+    detected_language: str = sanitize_whisper_lang(result.get("language")) or clean_whisper_lang or "en"
     emit("transcribing", 50)
 
     # ------------------------------------------------------------------ #

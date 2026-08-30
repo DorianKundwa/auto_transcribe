@@ -719,7 +719,8 @@ async def run_tts_and_transcribe(
         scaled = 40 + int(pct * 0.60)
         emit(stage, min(scaled, 99))
 
-    clean_target_lang = lang_code if lang_code and lang_code.lower() not in ("auto", "none") else "en"
+    from .transcribe import sanitize_whisper_lang
+    clean_target_lang = sanitize_whisper_lang(lang_code) or "en"
 
     result = await run_transcription(
         audio_path=wav_path,
